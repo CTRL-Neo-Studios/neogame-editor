@@ -1,25 +1,24 @@
+<script setup lang="ts">
+import {useRecents} from "~/composables/io/useRecents.ts";
+import {useAppEditorOpener} from "~/composables/app/useAppEditorOpener.ts";
+
+const $r = useRecents()
+const $o = useAppEditorOpener()
+
+</script>
+
 <template>
     <div class="flex flex-col items-center justify-center gap-4 h-screen">
-        <h1 class="font-bold text-2xl text-(--ui-primary)">
-            Nuxt UI v4
-        </h1>
+        <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-col justify-center">
 
-        <div class="flex items-center gap-2">
-            <UButton
-                label="Documentation"
-                icon="i-lucide-square-play"
-                to="https://ui3.nuxt.dev/getting-started/installation/nuxt"
-                target="_blank"
-            />
-
-            <UButton
-                label="GitHub"
-                color="neutral"
-                variant="outline"
-                icon="i-simple-icons-github"
-                to="https://github.com/nuxt/ui"
-                target="_blank"
-            />
+            </div>
+            <UScrollArea
+                v-slot="{ item, index }"
+                :items="$r.items"
+            >
+                <UButton variant="ghost" :label="item.name" @click="$o.open(item.path)"/>
+            </UScrollArea>
         </div>
     </div>
 </template>
