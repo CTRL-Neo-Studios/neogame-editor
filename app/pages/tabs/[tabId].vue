@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useAppTabs} from "~/composables/app/useAppTabs.ts";
+
 const route = useRoute()
 const $t = useAppTabs()
 
@@ -11,7 +13,7 @@ watchEffect(() => {
 
 <template>
     <MapEditor v-if="tab?.kind === 'map'" :key="tab.id" :tab="tab" />
-    <LibraryEditor v-else-if="tab?.kind === 'library'" :key="tab.id" :tab="tab" />
+    <LibraryEditor v-else-if="tab?.kind === 'library'" :key="`${tab.id}`" :tab="tab" />
     <div v-else class="flex h-full items-center justify-center">
         <UEmpty icon="i-lucide-file-question" title="Tab not open" description="Open a map or library from the project page.">
             <template #actions>

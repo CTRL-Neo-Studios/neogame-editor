@@ -1,5 +1,7 @@
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import type { NeoMapFile, NeoPrefab } from '#shared/types/neo'
+import {stringify, useProject} from "~/composables/project/useProject.ts";
+import {type EditorMap, fromMapFile, toMapFile} from "~/utils/mapModel.ts";
 
 export type TabKind = 'map' | 'library'
 

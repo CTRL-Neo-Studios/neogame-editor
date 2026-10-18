@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {stringify, useProject} from "~/composables/project/useProject.ts";
+import {useRecents} from "~/composables/io/useRecents.ts";
+import {useAppTabs} from "~/composables/app/useAppTabs.ts";
+
 const project = useProject()
 const recents = useRecents()
 const $t = useAppTabs()
