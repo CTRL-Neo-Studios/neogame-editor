@@ -14,17 +14,10 @@ if (project.state.value) project.state.value.libraries[props.tab.name] ??= { pre
 
 const lib = computed<NeoPrefabLibraryFile>(() => project.state.value?.libraries[props.tab.name] ?? { prefabs: {}, colliders: {} })
 
-// Ensure the selected entry's specs array exists before InspectorEntryList binds to it.
-watchEffect(() => {
-    const s = props.tab.selection
-    if (s.kind === 'prefab' && s.library === props.tab.name) {
-        const def = lib.value.prefabs?.[s.name]
-        if (def) def.specs ??= []
-    }
-    else if (s.kind === 'collider' && s.library === props.tab.name) {
-        const def = lib.value.colliders?.[s.name]
-        if (def) def.specs ??= []
-    }
+defineShortcuts({
+    meta_z: () => $t.undo(props.tab),
+    meta_shift_z: () => $t.redo(props.tab),
+    meta_y: () => $t.redo(props.tab),
 })
 
 const selection = computed(() => {
@@ -40,23 +33,23 @@ const selectedCollider = computed(() => (selectedColliderName.value ? (lib.value
 // Writable bindings so UInputTags / InspectorEntryList / USelectMenu can edit the selected record in place.
 const prefabSpecs = computed<NeoEntry[]>({
     get: () => selectedPrefab.value?.specs ?? [],
-    set: v => { if (selectedPrefab.value) selectedPrefab.value.specs = v },
+    set: v => { if (selectedPrefab.value) { $t.checkpoint(props.tab); selectedPrefab.value.specs = v } },
 })
 const prefabTags = computed<string[]>({
     get: () => selectedPrefab.value?.tags ?? [],
-    set: v => { if (selectedPrefab.value) selectedPrefab.value.tags = v },
+    set: v => { if (selectedPrefab.value) { $t.checkpoint(props.tab); selectedPrefab.value.tags = v } },
 })
 const prefabCollider = computed<string>({
     get: () => selectedPrefab.value?.collider ?? '',
-    set: v => { if (selectedPrefab.value) selectedPrefab.value.collider = v || undefined },
+    set: v => { if (selectedPrefab.value) { $t.checkpoint(props.tab); selectedPrefab.value.collider = v || undefined } },
 })
 const colliderSpecs = computed<NeoEntry[]>({
     get: () => selectedCollider.value?.specs ?? [],
-    set: v => { if (selectedCollider.value) selectedCollider.value.specs = v },
+    set: v => { if (selectedCollider.value) { $t.checkpoint(props.tab); selectedCollider.value.specs = v } },
 })
 const colliderTags = computed<string[]>({
     get: () => selectedCollider.value?.tags ?? [],
-    set: v => { if (selectedCollider.value) selectedCollider.value.tags = v },
+    set: v => { if (selectedCollider.value) { $t.checkpoint(props.tab); selectedCollider.value.tags = v } },
 })
 
 const colliderOptions = computed(() => [
@@ -80,17 +73,11 @@ const filteredPrefabs = computed(() => prefabEntries.value.filter(([n, d]) => ma
 const filteredColliders = computed(() => colliderEntries.value.filter(([n, d]) => matches(n, d.tags, colliderSearch.value)))
 
 function selectPrefab(name: string) {
-    const def = lib.value.prefabs?.[name]
-    if (!def) return
-    def.specs ??= []
-    props.tab.selection = { kind: 'prefab', library: props.tab.name, name }
+    if (lib.value.prefabs?.[name]) props.tab.selection = { kind: 'prefab', library: props.tab.name, name }
 }
 
 function selectCollider(name: string) {
-    const def = lib.value.colliders?.[name]
-    if (!def) return
-    def.specs ??= []
-    props.tab.selection = { kind: 'collider', library: props.tab.name, name }
+    if (lib.value.colliders?.[name]) props.tab.selection = { kind: 'collider', library: props.tab.name, name }
 }
 
 // ---- add ----
@@ -112,6 +99,7 @@ function commitAddPrefab() {
     if (!addingPrefab.value) return
     const name = newPrefabName.value.trim()
     if (name && !(name in (lib.value.prefabs ?? {}))) {
+        $t.checkpoint(props.tab)
         lib.value.prefabs ??= {}
         lib.value.prefabs[name] = { specs: [] }
         selectPrefab(name)
@@ -124,6 +112,7 @@ function commitAddCollider() {
     if (!addingCollider.value) return
     const name = newColliderName.value.trim()
     if (name && !(name in (lib.value.colliders ?? {}))) {
+        $t.checkpoint(props.tab)
         lib.value.colliders ??= {}
         lib.value.colliders[name] = {}
         selectCollider(name)
@@ -174,6 +163,7 @@ function commitRenamePrefab(oldName: string) {
 
 function applyRenamePrefab(oldName: string, newName: string) {
     const affected = mapTabsUsingPrefab(oldName)
+    $t.checkpoint(props.tab)
     const rekeyed = rekey(lib.value.prefabs ?? {}, oldName, newName)
     if (rekeyed) lib.value.prefabs = rekeyed
     for (const tab of affected) {
@@ -205,6 +195,7 @@ function commitRenameCollider(oldName: string) {
     const newName = renameColliderDraft.value.trim()
     renameColliderDraft.value = ''
     if (!newName || newName === oldName || newName in (lib.value.colliders ?? {})) return
+    $t.checkpoint(props.tab)
     const rekeyed = rekey(lib.value.colliders ?? {}, oldName, newName)
     if (rekeyed) {
         lib.value.colliders = rekeyed
@@ -246,18 +237,20 @@ function uniqueKey(record: Record<string, unknown>, base: string): string {
 function duplicatePrefab(name: string) {
     const def = lib.value.prefabs?.[name]
     if (!def) return
+    $t.checkpoint(props.tab)
     lib.value.prefabs ??= {}
     const copy = uniqueKey(lib.value.prefabs, `${name}-copy`)
-    lib.value.prefabs[copy] = structuredClone(def)
+    lib.value.prefabs[copy] = deepClone(def)
     selectPrefab(copy)
 }
 
 function duplicateCollider(name: string) {
     const def = lib.value.colliders?.[name]
     if (!def) return
+    $t.checkpoint(props.tab)
     lib.value.colliders ??= {}
     const copy = uniqueKey(lib.value.colliders, `${name}-copy`)
-    lib.value.colliders[copy] = structuredClone(def)
+    lib.value.colliders[copy] = deepClone(def)
     selectCollider(copy)
 }
 
@@ -294,6 +287,7 @@ function confirmDelete() {
     const d = deletePrompt.value
     deletePrompt.value = null
     if (!d) return
+    $t.checkpoint(props.tab)
     if (d.kind === 'prefab') {
         const prefabs = lib.value.prefabs
         if (prefabs) delete prefabs[d.name]
@@ -315,6 +309,10 @@ function confirmDelete() {
     <div class="flex h-full min-h-0">
         <!-- list -->
         <div class="flex w-64 shrink-0 flex-col gap-3 overflow-y-auto border-e border-default p-2">
+            <div class="flex items-center gap-0.5">
+                <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-undo-2" :disabled="!tab.undo.length" aria-label="Undo" @click="$t.undo(tab)" />
+                <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-redo-2" :disabled="!tab.redo.length" aria-label="Redo" @click="$t.redo(tab)" />
+            </div>
             <section class="flex flex-col gap-0.5">
                 <div class="flex items-center gap-1 px-1">
                     <span class="text-xs font-medium text-muted">Prefabs</span>

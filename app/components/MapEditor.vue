@@ -6,6 +6,8 @@ const project = useProject()
 const schema = computed(() => project.state.value?.schema ?? null)
 const prefabs = computed(() => $t.prefabsOf(props.tab))
 const bottomOpen = ref(true)
+// selection/hover outline color on the canvas; white reads on every tile palette
+const highlight = useLocalStorage('neo-highlight', '#ffffff')
 
 const tools: { tool: Tool, icon: string, label: string, key: string }[] = [
     { tool: 'select', icon: 'i-lucide-mouse-pointer-2', label: 'Select / move', key: 'V' },
@@ -43,15 +45,15 @@ defineShortcuts({
                         :icon="t.icon"
                         size="sm"
                         color="neutral"
-                        :variant="tab.tool === t.tool ? 'soft' : 'ghost'"
+                        :variant="tab.tool === t.tool ? 'solid' : 'ghost'"
                         :aria-label="t.label"
                         @click="setTool(t.tool)"
                     />
                 </UTooltip>
                 <USeparator orientation="vertical" class="mx-1 h-5" />
-                <UButton size="sm" color="neutral" :variant="tab.showGrid ? 'soft' : 'ghost'" icon="i-lucide-grid-3x3" label="Grid" @click="tab.showGrid = !tab.showGrid" />
-                <UButton size="sm" color="neutral" :variant="tab.showColliders ? 'soft' : 'ghost'" icon="i-lucide-box-select" label="Colliders" @click="tab.showColliders = !tab.showColliders" />
-                <UButton size="sm" color="neutral" :variant="tab.showObjects ? 'soft' : 'ghost'" icon="i-lucide-diamond" label="Objects" @click="tab.showObjects = !tab.showObjects" />
+                <UButton size="sm" color="neutral" :variant="tab.showGrid ? 'subtle' : 'ghost'" icon="i-lucide-grid-3x3" label="Grid" @click="tab.showGrid = !tab.showGrid" />
+                <UButton size="sm" color="neutral" :variant="tab.showColliders ? 'subtle' : 'ghost'" icon="i-lucide-box-select" label="Colliders" @click="tab.showColliders = !tab.showColliders" />
+                <UButton size="sm" color="neutral" :variant="tab.showObjects ? 'subtle' : 'ghost'" icon="i-lucide-diamond" label="Objects" @click="tab.showObjects = !tab.showObjects" />
                 <USeparator orientation="vertical" class="mx-1 h-5" />
                 <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-undo-2" :disabled="!tab.undo.length" aria-label="Undo" @click="$t.undo(tab)" />
                 <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-redo-2" :disabled="!tab.redo.length" aria-label="Redo" @click="$t.redo(tab)" />
@@ -59,10 +61,14 @@ defineShortcuts({
                 <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-minus" aria-label="Zoom out" @click="zoomBy(0.8)" />
                 <span class="w-12 text-center text-xs tabular-nums text-muted">{{ Math.round(tab.zoom * 100) }}%</span>
                 <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" aria-label="Zoom in" @click="zoomBy(1.25)" />
+                <USeparator orientation="vertical" class="mx-1 h-5" />
+                <UTooltip text="Highlight color">
+                    <input v-model="highlight" type="color" aria-label="Highlight color" class="size-6 cursor-pointer rounded border border-default bg-transparent p-0.5">
+                </UTooltip>
             </div>
 
             <div class="relative min-h-0 flex-1">
-                <MapCanvas v-if="schema" :tab="tab" :prefabs="prefabs" :schema="schema" class="absolute inset-0" />
+                <MapCanvas v-if="schema" :tab="tab" :prefabs="prefabs" :schema="schema" :highlight="highlight" class="absolute inset-0" />
                 <div v-else class="flex h-full items-center justify-center">
                     <UEmpty icon="i-lucide-file-x" title="No schema" description="Build the game once so NeoGameLib writes Data/<Game>.neoschema.json." />
                 </div>

@@ -1,10 +1,18 @@
 {
-  "cellSize": { "x": 32, "y": 32 },
-  "prefabs": [ "common" ],
+  "cellSize": {
+    "x": 32,
+    "y": 32
+  },
+  "prefabs": [
+    "common"
+  ],
   "layers": [
     {
       "name": "ground",
-      "legend": { ".": "floor", ",": "grass" },
+      "legend": {
+        ".": "floor",
+        ",": "grass"
+      },
       "rows": [
         "................",
         "................",
@@ -20,7 +28,11 @@
     },
     {
       "name": "main",
-      "legend": { "#": "wall", "~": "water", " ": null },
+      "legend": {
+        "#": "wall",
+        "~": "water",
+        " ": null
+      },
       "rows": [
         "################",
         "#              #",
@@ -36,12 +48,56 @@
     }
   ],
   "objects": [
-    { "name": "PlayerSpawn", "prefab": "spawn", "position": { "x": 64, "y": 64 } },
     {
-      "name": "Door-A", "prefab": "door", "position": { "x": 480, "y": 256 },
-      "overrides": { "exit": { "onEnter": [ { "type": "SwitchWorldAction", "properties": { "world": "level3" } } ] } }
+      "name": "PlayerSpawn",
+      "prefab": "spawn",
+      "position": {
+        "x": 64,
+        "y": 64
+      }
     },
-    { "name": "Coin-1", "prefab": "coin", "position": { "x": 160, "y": 96 } },
-    { "name": "Slime-1", "prefab": "slime", "position": { "x": 320, "y": 224 }, "overrides": { "EnemySpec": { "speed": 90, "patrols": true } } }
+    {
+      "name": "Door-A",
+      "prefab": "door",
+      "position": {
+        "x": 480,
+        "y": 256
+      },
+      "overrides": {
+        "exit": {
+          "onEnter": [
+            {
+              "type": "SwitchWorldAction",
+              "properties": {
+                "world": "level3",
+                "unload": null
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Coin-1",
+      "prefab": "coin",
+      "position": {
+        "x": 160,
+        "y": 96
+      }
+    },
+    {
+      "name": "Slime-1",
+      "prefab": "slime",
+      "position": {
+        "x": 320,
+        "y": 224
+      },
+      "overrides": {
+        "EnemySpec": {
+          "speed": 90,
+          "patrols": true
+        }
+      }
+    }
   ]
 }

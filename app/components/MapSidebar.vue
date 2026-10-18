@@ -131,14 +131,33 @@ watch(assetPaths, (paths) => {
 
 const thumbOf = (name: string) => thumbs[name] ?? ''
 
-function hueOf(name: string): string {
-    let h = 0
-    for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0
-    return `hsl(${h % 360} 40% 45%)`
-}
-
 // ---- objects ----
 const isObjectSelected = (index: number) => props.tab.selection.kind === 'object' && props.tab.selection.index === index
+
+// ---- hierarchy: each layer's legend, i.e. the char every painted prefab gets in the saved file ----
+const legendRows = computed(() => {
+    let legends: Map<string, string>[] = []
+    try { legends = layerLegends(props.tab.map) }
+    catch { /* too many prefabs for the char pool; ProblemsPanel reports it */ }
+    return props.tab.map.layers.map((layer, i) => {
+        const counts: Record<string, number> = {}
+        for (const name of layer.cells) if (name) counts[name] = (counts[name] ?? 0) + 1
+        return [...(legends[i] ?? [])].map(([prefab, ch]) => ({ prefab, ch, count: counts[prefab] ?? 0 }))
+    })
+})
+const expanded = useLocalStorage<Record<string, boolean>>('neo-sidebar-expanded', {})
+const isExpanded = (index: number) => expanded.value[`${props.tab.id}:${index}`] ?? index === props.tab.layer
+const toggleExpanded = (index: number) => expanded.value[`${props.tab.id}:${index}`] = !isExpanded(index)
+const openSections = useLocalStorage('neo-sidebar-sections', { prefabs: true, objects: true })
+
+// same deterministic swatch the canvas paints when a texture is missing, so the two always match
+const swatchOf = (name: string | null | undefined) => colorOf(name ?? null, (name && assetPaths.value[name]) || null)
+function pickLegend(name: string, layer: number) {
+    props.tab.layer = layer
+    const library = libraryOf.value[name]
+    if (library) selectPrefab(library, name)
+    else props.tab.prefab = name
+}
 </script>
 
 <template>
@@ -163,13 +182,21 @@ const isObjectSelected = (index: number) => props.tab.selection.kind === 'object
                 />
                 <UButton icon="i-lucide-check" size="xs" variant="soft" color="neutral" :disabled="!newLayerValid" aria-label="Confirm" @click="commitAddLayer" />
             </div>
+            <template v-for="item in layers" :key="item.index">
             <div
-                v-for="item in layers"
-                :key="item.index"
                 class="group flex items-center gap-1 rounded-md px-1 py-0.5"
                 :class="tab.layer === item.index ? 'bg-elevated' : 'hover:bg-elevated/50'"
                 @click="tab.layer = item.index"
             >
+                <UButton
+                    :icon="isExpanded(item.index) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                    size="xs"
+                    variant="link"
+                    color="neutral"
+                    class="shrink-0 px-0"
+                    :aria-label="isExpanded(item.index) ? 'Collapse legend' : 'Expand legend'"
+                    @click.stop="toggleExpanded(item.index)"
+                />
                 <UButton
                     :icon="item.layer.visible ? 'i-lucide-eye' : 'i-lucide-eye-off'"
                     size="xs"
@@ -222,15 +249,41 @@ const isObjectSelected = (index: number) => props.tab.selection.kind === 'object
                     />
                 </div>
             </div>
+            <div v-if="isExpanded(item.index)" class="ms-5 flex flex-col border-s border-default ps-1">
+                <div
+                    v-for="row in legendRows[item.index]"
+                    :key="row.prefab"
+                    class="flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5 text-xs"
+                    :class="tab.prefab === row.prefab && tab.layer === item.index ? 'bg-elevated' : 'hover:bg-elevated/50'"
+                    :title="`'${row.ch}' = ${row.prefab} · click to paint it on this layer`"
+                    @click="pickLegend(row.prefab, item.index)"
+                >
+                    <code class="w-4 text-center font-mono text-muted">{{ row.ch }}</code>
+                    <span class="size-3 shrink-0 rounded-sm" :style="{ background: swatchOf(row.prefab) }" />
+                    <span class="min-w-0 flex-1 truncate" :class="prefabs[row.prefab] ? '' : 'text-error'">{{ row.prefab }}</span>
+                    <span class="tabular-nums text-dimmed">{{ row.count }}</span>
+                </div>
+                <div v-if="!legendRows[item.index]?.length" class="px-1 py-0.5 text-xs italic text-dimmed">empty</div>
+            </div>
+            </template>
         </div>
 
         <!-- Prefabs -->
         <div class="flex flex-col gap-0.5">
             <div class="flex items-center gap-1 px-1">
-                <span class="text-xs font-medium text-muted">Prefabs</span>
+                <UButton
+                    :icon="openSections.prefabs ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                    label="Prefabs"
+                    size="xs"
+                    variant="link"
+                    color="neutral"
+                    class="px-0 text-xs font-medium text-muted"
+                    @click="openSections.prefabs = !openSections.prefabs"
+                />
                 <div class="flex-1" />
-                <UInput v-model="prefabSearch" size="xs" icon="i-lucide-search" placeholder="Search" class="w-24" />
+                <UInput v-if="openSections.prefabs" v-model="prefabSearch" size="xs" icon="i-lucide-search" placeholder="Search" class="w-24" />
             </div>
+            <template v-if="openSections.prefabs">
             <UEmpty v-if="!tab.map.libraries.length" size="sm" icon="i-lucide-boxes" title="No libraries" description="Add a prefab library in the map settings.">
                 <template #actions>
                     <UButton size="xs" variant="soft" color="neutral" label="Map settings" @click="tab.selection = { kind: 'map' }" />
@@ -243,11 +296,11 @@ const isObjectSelected = (index: number) => props.tab.selection.kind === 'object
                         v-for="item in group.items"
                         :key="item.name"
                         class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5"
-                        :class="tab.prefab === item.name ? 'bg-elevated' : 'hover:bg-elevated/50'"
+                        :class="tab.prefab === item.name ? 'bg-elevated ring-primary/50 ring' : 'hover:bg-elevated/50'"
                         @click="selectPrefab(group.library, item.name)"
                     >
                         <img v-if="thumbs[item.name]" :src="thumbOf(item.name)" class="size-4 shrink-0 rounded-sm object-cover" alt="" />
-                        <span v-else class="size-4 shrink-0 rounded-sm" :style="{ background: hueOf(item.name) }" />
+                        <span v-else class="size-4 shrink-0 rounded-sm" :style="{ background: swatchOf(item.name) }" />
                         <span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span>
                         <UBadge v-if="item.def.collider" size="xs" variant="subtle" color="neutral" :label="item.def.collider" />
                         <template v-if="tagsOf(item.def).length">
@@ -258,15 +311,25 @@ const isObjectSelected = (index: number) => props.tab.selection.kind === 'object
                 </div>
                 <div v-if="!prefabGroups.length" class="px-1 text-xs text-dimmed">No matching prefabs</div>
             </template>
+            </template>
         </div>
 
         <!-- Objects -->
         <div class="flex flex-col gap-0.5">
             <div class="flex items-center gap-1 px-1">
-                <span class="text-xs font-medium text-muted">Objects ({{ tab.map.objects.length }})</span>
+                <UButton
+                    :icon="openSections.objects ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
+                    :label="`Objects (${tab.map.objects.length})`"
+                    size="xs"
+                    variant="link"
+                    color="neutral"
+                    class="px-0 text-xs font-medium text-muted"
+                    @click="openSections.objects = !openSections.objects"
+                />
                 <div class="flex-1" />
                 <UButton icon="i-lucide-plus" size="xs" variant="ghost" color="neutral" aria-label="Object tool" @click="tab.tool = 'object'" />
             </div>
+            <template v-if="openSections.objects">
             <div
                 v-for="(obj, index) in tab.map.objects"
                 :key="index"
@@ -274,11 +337,12 @@ const isObjectSelected = (index: number) => props.tab.selection.kind === 'object
                 :class="isObjectSelected(index) ? 'bg-elevated' : 'hover:bg-elevated/50'"
                 @click="tab.selection = { kind: 'object', index }"
             >
-                <span class="size-3 shrink-0 rotate-45 rounded-[2px]" :style="{ background: hueOf(obj.prefab ?? '') }" />
+                <span class="size-3 shrink-0 rotate-45 rounded-[2px]" :style="{ background: swatchOf(obj.prefab) }" />
                 <span class="min-w-0 flex-1 truncate text-sm">{{ obj.name || 'Unnamed' }}</span>
                 <span class="truncate text-xs text-dimmed">{{ obj.prefab }}</span>
             </div>
             <div v-if="!tab.map.objects.length" class="px-1 text-xs text-dimmed">No objects</div>
+            </template>
         </div>
     </div>
 </template>

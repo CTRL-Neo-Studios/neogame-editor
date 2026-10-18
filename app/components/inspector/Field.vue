@@ -73,9 +73,8 @@ function setString(s: string) {
     emit('update:modelValue', s === '' && !props.info.required ? undefined : s)
 }
 
-function toggleNull() {
-    if (!isNull.value) return emit('update:modelValue', null)
-    // the default of a nullable field is usually null itself; start from the type's zero value instead
+// a value to start editing from when the field is null: the schema default, else the type's zero value
+function setFromNull() {
     const blank = blankValue(props.info)
     emit('update:modelValue', blank === null ? blankValue({ ...props.info, default: undefined }) : blank)
 }
@@ -98,28 +97,32 @@ function toggleNull() {
         <template #hint>
             <span class="flex items-center gap-1">
                 <span class="text-xs">{{ hint }}</span>
-                <UButton
-                    v-if="info.nullable"
-                    label="null"
-                    size="xs"
-                    color="neutral"
-                    :variant="isNull ? 'soft' : 'ghost'"
-                    :aria-pressed="isNull"
-                    @click="toggleNull"
-                />
+                <UTooltip v-if="info.nullable && !isNull" text="Set to null">
+                    <UButton icon="i-lucide-x" size="xs" color="neutral" variant="ghost" aria-label="Set to null" @click="emit('update:modelValue', null)" />
+                </UTooltip>
                 <UTooltip v-if="overridden" text="Revert to prefab value">
                     <UButton icon="i-lucide-rotate-ccw" size="xs" color="primary" variant="ghost" aria-label="Revert to prefab value" @click="emit('reset')" />
                 </UTooltip>
             </span>
         </template>
 
-        <div v-if="isNull" class="text-sm italic text-muted">null</div>
+        <!-- strings stay editable while null: typing simply replaces the null -->
+        <UButton
+            v-if="isNull && field.kind !== 'string'"
+            icon="i-lucide-plus"
+            :label="`null — set ${typeLabel}`"
+            size="sm"
+            color="neutral"
+            variant="outline"
+            class="w-full justify-start italic text-muted"
+            @click="setFromNull"
+        />
 
         <UInput
             v-else-if="field.kind === 'string'"
             :model-value="typeof value === 'string' ? value : ''"
             :icon="field.asset ? 'i-lucide-image' : undefined"
-            :placeholder="field.asset ? 'Content path, e.g. Sprites/wall' : (info.required ? 'required' : '')"
+            :placeholder="isNull ? 'null' : field.asset ? 'Content path, e.g. Sprites/wall' : (info.required ? 'required' : '')"
             class="w-full"
             @update:model-value="s => setString(String(s ?? ''))"
         />

@@ -69,24 +69,37 @@ export function fromMapFile(file: NeoMapFile): EditorMap {
 
 const CHAR_POOL = [...'#.,~=+*%&@$!?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_:;<>^()[]{}|/\\']
 
-/** Serialize back to the file shape. Legend characters are per layer; a prefab keeps the char it was loaded with. */
-export function toMapFile(map: EditorMap): NeoMapFile {
-    const layers = map.layers.map((layer) => {
-        const legend: Record<string, string | null> = {}
+/**
+ * Legend char of every prefab, per layer, exactly as toMapFile writes them: a prefab keeps the char it was loaded
+ * with, new prefabs take the first free pool char. Pure, so the sidebar and canvas can show what a save will write.
+ */
+export function layerLegends(map: EditorMap): Map<string, string>[] {
+    const chars = { ...map.chars }
+    return map.layers.map((layer) => {
         const charOf = new Map<string, string>()
         const taken = new Set<string>([' '])
-
-        const assign = (prefab: string) => {
-            let ch = charOf.get(prefab)
-            if (ch) return ch
-            const preferred = map.chars[prefab]
-            ch = preferred && !taken.has(preferred) ? preferred : CHAR_POOL.find(c => !taken.has(c))
+        for (const prefab of layer.cells) {
+            if (!prefab || charOf.has(prefab)) continue
+            const preferred = chars[prefab]
+            const ch = preferred && !taken.has(preferred) ? preferred : CHAR_POOL.find(c => !taken.has(c))
             if (!ch) throw new Error(`layer '${layer.name}' uses more prefabs than available legend characters`)
             taken.add(ch)
             charOf.set(prefab, ch)
+            chars[prefab] ??= ch
+        }
+        return charOf
+    })
+}
+
+/** Serialize back to the file shape. Legend characters are per layer; a prefab keeps the char it was loaded with. */
+export function toMapFile(map: EditorMap): NeoMapFile {
+    const legends = layerLegends(map)
+    const layers = map.layers.map((layer, i) => {
+        const charOf = legends[i]!
+        const legend: Record<string, string | null> = {}
+        for (const [prefab, ch] of charOf) {
             legend[ch] = prefab
             map.chars[prefab] ??= ch
-            return ch
         }
 
         let hasEmpty = false
@@ -95,7 +108,7 @@ export function toMapFile(map: EditorMap): NeoMapFile {
             let line = ''
             for (let c = 0; c < map.cols; c++) {
                 const prefab = layer.cells[r * map.cols + c]
-                if (prefab) line += assign(prefab)
+                if (prefab) line += charOf.get(prefab)
                 else { line += ' '; hasEmpty = true }
             }
             rows.push(line)

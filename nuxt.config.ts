@@ -56,7 +56,6 @@ export default defineNuxtConfig({
                 "@vue/devtools-core",
                 "@vue/devtools-kit",
                 "ajv/dist/2020.js",
-                "pixi.js",
             ]
         }
     },

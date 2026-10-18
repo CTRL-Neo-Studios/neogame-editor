@@ -1,5 +1,6 @@
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
-import type { NeoMapFile, NeoPrefab } from '#shared/types/neo'
+import { message } from '@tauri-apps/plugin-dialog'
+import type { NeoMapFile, NeoPrefab, NeoPrefabLibraryFile } from '#shared/types/neo'
 import {stringify, useProject} from "~/composables/project/useProject.ts";
 import {type EditorMap, fromMapFile, toMapFile} from "~/utils/mapModel.ts";
 
@@ -39,6 +40,8 @@ export interface LibraryTab {
     kind: 'library'
     name: string
     saved: string
+    undo: string[]
+    redo: string[]
     selection: Selection
 }
 
@@ -90,7 +93,7 @@ export function useAppTabs() {
     async function openLibrary(name: string) {
         const id = `library:${name}`
         if (!tabs.value.some(t => t.id === id)) {
-            const tab: LibraryTab = { id, kind: 'library', name, saved: '', selection: { kind: 'map' } }
+            const tab: LibraryTab = { id, kind: 'library', name, saved: '', undo: [], redo: [], selection: { kind: 'map' } }
             tab.saved = serialize(tab)
             tabs.value.push(tab)
         }
@@ -105,10 +108,27 @@ export function useAppTabs() {
         tab.saved = body
     }
 
+    /** Asks once before throwing away unsaved tabs. true = go ahead. */
+    async function confirmDiscard(list: EditorTab[]): Promise<boolean> {
+        const dirty = list.filter(isDirty)
+        if (!dirty.length) return true
+        const answer = await message(`Unsaved changes in ${dirty.map(t => t.name).join(', ')}.`, {
+            title: 'Save changes?',
+            kind: 'warning',
+            buttons: { yes: 'Save', no: "Don't save", cancel: 'Cancel' },
+        })
+        if (answer === 'Save') {
+            for (const tab of dirty) await save(tab)
+            return true
+        }
+        return answer === "Don't save"
+    }
+
     async function close(id: string) {
         const index = tabs.value.findIndex(t => t.id === id)
-        if (index < 0) return
-        tabs.value.splice(index, 1)
+        const tab = tabs.value[index]
+        if (!tab || !(await confirmDiscard([tab]))) return
+        tabs.value.splice(tabs.value.indexOf(tab), 1)
         if (activeId.value === id) {
             const next = tabs.value[Math.min(index, tabs.value.length - 1)]
             activeId.value = next?.id ?? null
@@ -120,13 +140,21 @@ export function useAppTabs() {
      * Snapshot before a mutation so undo restores it. Snapshots are whole-file serializations: maps here are
      * school-assignment sized (a few hundred cells), so this costs less than diff bookkeeping would.
      */
-    function checkpoint(tab: MapTab) {
-        tab.undo.push(stringify(toMapFile(tab.map)))
+    function checkpoint(tab: EditorTab) {
+        tab.undo.push(serialize(tab))
         if (tab.undo.length > HISTORY_LIMIT) tab.undo.shift()
         tab.redo.length = 0
     }
 
-    function restore(tab: MapTab, json: string) {
+    function restore(tab: EditorTab, json: string) {
+        if (tab.kind === 'library') {
+            const state = project.state.value
+            if (state) state.libraries[tab.name] = JSON.parse(json) as NeoPrefabLibraryFile
+            const s = tab.selection
+            const lib = state?.libraries[tab.name]
+            if ((s.kind === 'prefab' && !lib?.prefabs?.[s.name]) || (s.kind === 'collider' && !lib?.colliders?.[s.name])) tab.selection = { kind: 'map' }
+            return
+        }
         const visibility = tab.map.layers.map(l => l.visible)
         tab.map = fromMapFile(JSON.parse(json) as NeoMapFile)
         tab.map.layers.forEach((l, i) => l.visible = visibility[i] ?? true)
@@ -134,19 +162,19 @@ export function useAppTabs() {
         if (tab.selection.kind === 'object' && !tab.map.objects[tab.selection.index]) tab.selection = { kind: 'map' }
     }
 
-    function undo(tab: MapTab) {
+    function undo(tab: EditorTab) {
         const prev = tab.undo.pop()
         if (prev === undefined) return
-        tab.redo.push(stringify(toMapFile(tab.map)))
+        tab.redo.push(serialize(tab))
         restore(tab, prev)
     }
 
-    function redo(tab: MapTab) {
+    function redo(tab: EditorTab) {
         const next = tab.redo.pop()
         if (next === undefined) return
-        tab.undo.push(stringify(toMapFile(tab.map)))
+        tab.undo.push(serialize(tab))
         restore(tab, next)
     }
 
-    return { tabs, activeId, active, prefabsOf, isDirty, openMap, openLibrary, save, close, checkpoint, undo, redo }
+    return { tabs, activeId, active, prefabsOf, isDirty, openMap, openLibrary, save, close, confirmDiscard, checkpoint, undo, redo }
 }

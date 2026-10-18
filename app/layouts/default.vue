@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { open as openDialog } from '@tauri-apps/plugin-dialog'
+import { platform } from '@tauri-apps/plugin-os'
+import { isTauri } from '@tauri-apps/api/core'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import {useProject} from "~/composables/project/useProject.ts";
 import {useRecents} from "~/composables/io/useRecents.ts";
 import {useAppTabs} from "~/composables/app/useAppTabs.ts";
@@ -9,9 +12,15 @@ const recents = useRecents()
 const $t = useAppTabs()
 const toast = useToast()
 
+// room for the native window controls decorum draws over our topbar: macOS traffic lights sit top-left
+// (inset 12/16 in window_effects.rs), decorum's Windows min/max/close (3 x 58px) and Linux buttons top-right
+const os = isTauri() ? platform() : null
+const headerInset = os === 'macos' ? { paddingLeft: '76px' } : os === 'windows' ? { paddingRight: '180px' } : os === 'linux' ? { paddingRight: '96px' } : undefined
+
 async function openProject(path?: string) {
     const root = path ?? await openDialog({ directory: true, title: 'Open game project (folder with Data/)' })
     if (typeof root !== 'string') return
+    if (!(await $t.confirmDiscard($t.tabs.value))) return
     try {
         await project.open(root)
         await recents.add(root)
@@ -22,6 +31,13 @@ async function openProject(path?: string) {
     catch (e) {
         toast.add({ title: 'Could not open project', description: e instanceof Error ? e.message : String(e), color: 'error', icon: 'i-lucide-folder-x' })
     }
+}
+
+// quitting with unsaved tabs asks first, like closing a single tab does
+if (isTauri()) {
+    getCurrentWindow().onCloseRequested(async (event) => {
+        if (!(await $t.confirmDiscard($t.tabs.value))) event.preventDefault()
+    })
 }
 
 async function saveActive() {
@@ -59,7 +75,7 @@ function selectTab(id: string) {
 
 <template>
     <div class="fixed inset-0 flex flex-col bg-default">
-        <header class="flex h-10 shrink-0 items-center gap-1 border-b border-default px-2">
+        <header class="flex h-10 shrink-0 items-center gap-1 border-b border-default px-2" :style="headerInset" data-tauri-drag-region>
             <UButton
                 to="/"
                 variant="ghost"
@@ -71,7 +87,7 @@ function selectTab(id: string) {
                 aria-label="Project"
             />
             <USeparator orientation="vertical" class="mx-1 h-5" />
-            <div class="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto">
+            <div class="flex min-w-0 flex-1 items-center gap-0.5 self-stretch overflow-x-auto" data-tauri-drag-region>
                 <div
                     v-for="item in tabItems"
                     :key="item.id"

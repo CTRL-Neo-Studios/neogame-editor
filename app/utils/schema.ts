@@ -63,7 +63,8 @@ function classify(schema: NeoSchemaFile, raw: SchemaNode): FieldKind {
         case 'number': return { kind: 'number', integer: false }
         case 'boolean': return { kind: 'boolean' }
         case 'array': {
-            const items = node.items ?? {}
+            // items are nullable too (anyOf [T, null]), e.g. TriggerSpec.onEnter items, SwitchWorldAction.unload items
+            const items = unwrapNullable(node.items ?? {}).node
             const itemEntries = entryListKind(items)
             if (itemEntries) return itemEntries
             return deref(schema, items)?.type === 'string' ? { kind: 'strings' } : { kind: 'unknown' }
