@@ -1,0 +1,1217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:neogamelib:neoschema:1",
+  "title": "NeoGameLib data schema",
+  "x-neo-schema-version": 1,
+  "x-neo-specs": [
+    "BoxColliderSpec",
+    "CameraSpec",
+    "CoinSpec",
+    "EnemySpec",
+    "SpawnPointSpec",
+    "SpriteColliderSpec",
+    "SpriteSpec",
+    "TextSpec",
+    "TriggerSpec"
+  ],
+  "x-neo-actions": [
+    "DestroyAction",
+    "GiveItemAction",
+    "LoadWorldAction",
+    "SetEnabledAction",
+    "SwitchWorldAction",
+    "UnloadWorldAction"
+  ],
+  "x-neo-files": {
+    "neomap": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NeoGameLib.NeoMapping.DurableMap.NeoMap"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "neoprefabs": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NeoGameLib.NeoMapping.DurablePrefabs.NeoPrefabLibrary"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "project": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NeoGameLib.NeoMapping.NeoProject"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "spec:BoxColliderSpec": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "$ref": "#/$defs/Microsoft.Xna.Framework.Vector2"
+        },
+        "offset": {
+          "$ref": "#/$defs/Microsoft.Xna.Framework.Vector2",
+          "default": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        "isTrigger": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "size"
+      ]
+    },
+    "Microsoft.Xna.Framework.Vector2": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "number",
+          "default": 0
+        },
+        "y": {
+          "type": "number",
+          "default": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "spec:CameraSpec": {
+      "type": "object",
+      "properties": {
+        "zoom": {
+          "type": "number",
+          "default": 1
+        },
+        "order": {
+          "type": "integer",
+          "default": 0
+        },
+        "cullingMask": {
+          "type": "integer",
+          "default": -1
+        }
+      },
+      "additionalProperties": false
+    },
+    "spec:CoinSpec": {
+      "type": "object",
+      "properties": {
+        "value": {
+          "type": "integer",
+          "default": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "spec:EnemySpec": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "slime",
+            "bat",
+            "skeleton"
+          ],
+          "default": "slime"
+        },
+        "speed": {
+          "type": "number",
+          "default": 60
+        },
+        "patrols": {
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "spec:SpawnPointSpec": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ]
+    },
+    "spec:SpriteColliderSpec": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    },
+    "spec:SpriteSpec": {
+      "type": "object",
+      "properties": {
+        "texture": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-neo-asset": "Texture2D"
+        },
+        "depth": {
+          "type": "number",
+          "default": 0
+        },
+        "order": {
+          "type": "integer",
+          "default": 0
+        },
+        "layer": {
+          "type": "integer",
+          "default": 1
+        },
+        "anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Microsoft.Xna.Framework.Vector2"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NeoGameLib.NeoMapping.DurableSpecifications.TileRect"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "texture"
+      ]
+    },
+    "NeoGameLib.NeoMapping.DurableSpecifications.TileRect": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "integer",
+          "default": 0
+        },
+        "y": {
+          "type": "integer",
+          "default": 0
+        },
+        "width": {
+          "type": "integer",
+          "default": 0
+        },
+        "height": {
+          "type": "integer",
+          "default": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "spec:TextSpec": {
+      "type": "object",
+      "properties": {
+        "font": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "x-neo-asset": "SpriteFont"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": ""
+        },
+        "depth": {
+          "type": "number",
+          "default": 0
+        },
+        "order": {
+          "type": "integer",
+          "default": 0
+        },
+        "layer": {
+          "type": "integer",
+          "default": 1
+        },
+        "anchor": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Microsoft.Xna.Framework.Vector2"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "font"
+      ]
+    },
+    "spec:TriggerSpec": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "$ref": "#/$defs/Microsoft.Xna.Framework.Vector2"
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "onEnter": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/entry:action"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "onStay": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/entry:action"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "onExit": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/entry:action"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "offset": {
+          "$ref": "#/$defs/Microsoft.Xna.Framework.Vector2",
+          "default": {
+            "x": 0,
+            "y": 0
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "size"
+      ]
+    },
+    "entry:action": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "DestroyAction"
+            },
+            "properties": {
+              "$ref": "#/$defs/action:DestroyAction"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "GiveItemAction"
+            },
+            "properties": {
+              "$ref": "#/$defs/action:GiveItemAction"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "LoadWorldAction"
+            },
+            "properties": {
+              "$ref": "#/$defs/action:LoadWorldAction"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "SetEnabledAction"
+            },
+            "properties": {
+              "$ref": "#/$defs/action:SetEnabledAction"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "SwitchWorldAction"
+            },
+            "properties": {
+              "$ref": "#/$defs/action:SwitchWorldAction"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "UnloadWorldAction"
+            },
+            "properties": {
+              "$ref": "#/$defs/action:UnloadWorldAction"
+            }
+          },
+          "required": [
+            "type"
+          ]
+        }
+      ]
+    },
+    "action:DestroyAction": {
+      "type": "object",
+      "properties": {
+        "target": {
+          "type": "string",
+          "enum": [
+            "self",
+            "other"
+          ],
+          "default": "self"
+        }
+      },
+      "additionalProperties": false
+    },
+    "action:GiveItemAction": {
+      "type": "object",
+      "properties": {
+        "item": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "default": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "item"
+      ]
+    },
+    "action:LoadWorldAction": {
+      "type": "object",
+      "properties": {
+        "world": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "world"
+      ]
+    },
+    "action:SetEnabledAction": {
+      "type": "object",
+      "properties": {
+        "component": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "target": {
+          "type": "string",
+          "enum": [
+            "self",
+            "other"
+          ],
+          "default": "self"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "component"
+      ]
+    },
+    "action:SwitchWorldAction": {
+      "type": "object",
+      "properties": {
+        "world": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "unload": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "world"
+      ]
+    },
+    "action:UnloadWorldAction": {
+      "type": "object",
+      "properties": {
+        "world": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "NeoGameLib.NeoMapping.DurableMap.NeoMap": {
+      "type": "object",
+      "properties": {
+        "cellSize": {
+          "$ref": "#/$defs/Microsoft.Xna.Framework.Point",
+          "default": {
+            "x": 32,
+            "y": 32
+          }
+        },
+        "origin": {
+          "$ref": "#/$defs/Microsoft.Xna.Framework.Vector2",
+          "default": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        "prefabs": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        },
+        "layers": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/NeoGameLib.NeoMapping.DurableMap.NeoMapLayer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        },
+        "objects": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/NeoGameLib.NeoMapping.DurableMap.NeoMapObject"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "Microsoft.Xna.Framework.Point": {
+      "type": "object",
+      "properties": {
+        "x": {
+          "type": "integer",
+          "default": 0
+        },
+        "y": {
+          "type": "integer",
+          "default": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "NeoGameLib.NeoMapping.DurableMap.NeoMapLayer": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": ""
+        },
+        "legend": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": {}
+        },
+        "rows": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "NeoGameLib.NeoMapping.DurableMap.NeoMapObject": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": ""
+        },
+        "prefab": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": ""
+        },
+        "tags": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        },
+        "specs": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/entry:spec"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        },
+        "position": {
+          "$ref": "#/$defs/Microsoft.Xna.Framework.Vector2",
+          "default": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        "rotation": {
+          "type": "number",
+          "default": 0
+        },
+        "scale": {
+          "$ref": "#/$defs/Microsoft.Xna.Framework.Vector2",
+          "default": {
+            "x": 1,
+            "y": 1
+          }
+        },
+        "overrides": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "entry:spec": {
+      "allOf": [
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "BoxColliderSpec"
+                },
+                "properties": {
+                  "$ref": "#/$defs/spec:BoxColliderSpec"
+                }
+              },
+              "required": [
+                "type",
+                "properties"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "CameraSpec"
+                },
+                "properties": {
+                  "$ref": "#/$defs/spec:CameraSpec"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "CoinSpec"
+                },
+                "properties": {
+                  "$ref": "#/$defs/spec:CoinSpec"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "EnemySpec"
+                },
+                "properties": {
+                  "$ref": "#/$defs/spec:EnemySpec"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "SpawnPointSpec"
+                },
+                "properties": {
+                  "$ref": "#/$defs/spec:SpawnPointSpec"
+                }
+              },
+              "required": [
+                "type",
+                "properties"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "SpriteColliderSpec"
+                },
+                "properties": {
+                  "$ref": "#/$defs/spec:SpriteColliderSpec"
+                }
+              },
+              "required": [
+                "type"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "SpriteSpec"
+                },
+                "properties": {
+                  "$ref": "#/$defs/spec:SpriteSpec"
+                }
+              },
+              "required": [
+                "type",
+                "properties"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "TextSpec"
+                },
+                "properties": {
+                  "$ref": "#/$defs/spec:TextSpec"
+                }
+              },
+              "required": [
+                "type",
+                "properties"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "const": "TriggerSpec"
+                },
+                "properties": {
+                  "$ref": "#/$defs/spec:TriggerSpec"
+                }
+              },
+              "required": [
+                "type",
+                "properties"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "NeoGameLib.NeoMapping.DurablePrefabs.NeoPrefabLibrary": {
+      "type": "object",
+      "properties": {
+        "prefabs": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/NeoGameLib.NeoMapping.DurablePrefabs.NeoPrefab"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": {}
+        },
+        "colliders": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/NeoGameLib.NeoMapping.Grouping.NeoColliderGroup"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "NeoGameLib.NeoMapping.DurablePrefabs.NeoPrefab": {
+      "type": "object",
+      "properties": {
+        "tags": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        },
+        "specs": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/entry:spec"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        },
+        "collider": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": ""
+        }
+      },
+      "additionalProperties": false
+    },
+    "NeoGameLib.NeoMapping.Grouping.NeoColliderGroup": {
+      "type": "object",
+      "properties": {
+        "tags": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        },
+        "specs": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/entry:spec"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
+    "NeoGameLib.NeoMapping.NeoProject": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "default": 1
+        },
+        "schema": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": ""
+        },
+        "contentRoot": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "../Content"
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

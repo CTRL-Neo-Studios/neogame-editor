@@ -5,7 +5,6 @@ export default defineNuxtConfig({
     modules: [
       "@nuxt/ui",
       "@type32/nuxt-ui-extras",
-      "nuxt-auth-utils",
       "@vueuse/nuxt",
       "@nuxt/image",
       "@nuxt/icon",
@@ -15,6 +14,9 @@ export default defineNuxtConfig({
     ],
 
     css: ["~/assets/css/main.css"],
+
+    // composables are grouped by area (app/, io/, project/); auto-import every subfolder
+    imports: {dirs: ["composables/**"]},
 
     compatibilityDate: "2026-01-20",
 
@@ -53,8 +55,8 @@ export default defineNuxtConfig({
                 "tailwindcss/colors",
                 "@vue/devtools-core",
                 "@vue/devtools-kit",
-                "@internationalized/date",
-                "zod",
+                "ajv/dist/2020.js",
+                "pixi.js",
             ]
         }
     },

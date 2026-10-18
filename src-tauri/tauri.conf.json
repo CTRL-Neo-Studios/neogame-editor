@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "nuxt-app",
+  "productName": "NeoMap Editor",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "studio.ctrlneo.neomap-editor",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:3000",
@@ -13,9 +13,9 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "nuxt-app",
-        "width": 800,
-        "height": 600,
+        "title": "NeoMap Editor",
+        "width": 1440,
+        "height": 900,
         "resizable": true,
         "fullscreen": false,
         "hiddenTitle": true

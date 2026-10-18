@@ -1,15 +1,8 @@
-<script setup lang="ts">
-</script>
 <template>
     <UApp>
-        <NuxtLoadingIndicator color="var(--ui-primary)"/>
+        <NuxtLoadingIndicator color="var(--ui-primary)" />
         <NuxtLayout>
-            <NuxtPage/>
+            <NuxtPage />
         </NuxtLayout>
     </UApp>
 </template>
-<style scoped>
-html, body {
-    background: transparent;
-}
-</style>
