@@ -1,0 +1,582 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NeoMap Editor (mockup)</title>
+<style>
+:root{--bg:#16181d;--panel:#1f2229;--panel2:#272b34;--line:#323743;--text:#d8dbe2;--dim:#858b98;--accent:#5aa9ff;--warn:#f0b35a;--err:#ff6b6b;--solid:#ff5c7a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:12.5px/1.4 "Segoe UI",system-ui,sans-serif;display:grid;height:100vh;overflow:hidden;
+  grid-template-columns:232px 1fr 300px;grid-template-rows:40px 1fr 200px 24px;
+  grid-template-areas:"top top top" "left view right" "left bottom right" "status status status"}
+button,input,select{font:inherit;color:inherit}
+header{grid-area:top;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{font-weight:700;letter-spacing:.3px}.brand b{color:var(--accent)}
+.badge{font-size:10px;padding:1px 6px;border-radius:3px;background:#3a3320;color:var(--warn)}
+.file{color:var(--dim);margin:0 12px 0 4px}
+.sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:4px 9px;cursor:pointer}
+.btn:hover{border-color:#4a5262}.btn.on{background:#24364d;border-color:var(--accent);color:#fff}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#0b1220;font-weight:600}
+.tool{width:30px;padding:4px 0;text-align:center}
+aside{background:var(--panel);overflow:auto}
+#left{grid-area:left;border-right:1px solid var(--line)}#right{grid-area:right;border-left:1px solid var(--line)}
+section{border-bottom:1px solid var(--line);padding:8px 10px}
+h3{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--dim);display:flex;justify-content:space-between;align-items:center}
+.row{display:flex;align-items:center;gap:7px;padding:4px 6px;border-radius:4px;cursor:pointer;border:1px solid transparent;white-space:nowrap}
+.row:hover{background:var(--panel2)}.row.on{background:#24364d;border-color:#34557d}
+.sw{width:14px;height:14px;border-radius:3px;flex:none}.sw.dia{transform:rotate(45deg) scale(.8)}
+.ch{font-family:Consolas,monospace;color:var(--dim);margin-left:auto}
+.tag{font-size:10px;padding:0 5px;border-radius:3px;background:#3a2530;color:var(--solid)}
+.eye{width:14px;text-align:center;color:var(--text)}.eye.off{opacity:.25}
+.mini{background:none;border:none;color:var(--dim);cursor:pointer;padding:0 4px;font-size:13px}.mini:hover{color:var(--text)}
+#view{grid-area:view;overflow:auto;display:flex;padding:24px;background:#111318}
+canvas{margin:auto;flex:none;box-shadow:0 0 0 1px var(--line),0 10px 40px #0008;cursor:crosshair}
+#bottom{grid-area:bottom;background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.tabs{display:flex;gap:2px;padding:0 8px;border-bottom:1px solid var(--line)}
+.tab{padding:6px 10px;cursor:pointer;color:var(--dim);border-bottom:2px solid transparent}.tab.on{color:var(--text);border-color:var(--accent)}
+pre{margin:0;padding:8px 12px;overflow:auto;flex:1;font:12px/1.45 Consolas,monospace}
+.k{color:#9cc4ff}.s{color:#b5d98a}.n{color:#f0a868}.l{color:#c792ea}.c{color:var(--dim)}
+.prob{display:block}.prob.err::before{content:"\25CF  ";color:var(--err)}.prob.warn::before{content:"\25CF  ";color:var(--warn)}
+footer{grid-area:status;display:flex;gap:18px;align-items:center;padding:0 10px;background:var(--panel);border-top:1px solid var(--line);color:var(--dim);font-size:11.5px}
+footer .r{margin-left:auto}
+.title{font-size:14px;font-weight:600}.sub{color:var(--dim);margin-bottom:6px}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:6px;margin:8px 0;overflow:hidden}
+.card>.hd{display:flex;align-items:center;gap:6px;padding:5px 8px;background:#2f3440;font-weight:600}
+.card>.hd .id{font-weight:400;color:var(--dim);font-family:Consolas,monospace;font-size:11px}
+.card>.hd .mini{margin-left:auto}
+.card>.bd{padding:4px 8px 8px}
+.field{display:grid;grid-template-columns:84px 1fr 18px;align-items:center;gap:6px;padding:3px 0 3px 6px;border-left:2px solid transparent}
+.field.over{border-color:var(--accent)}.field.over .lbl{color:var(--accent)}
+.field:not(.over) .reset{visibility:hidden}
+.field.missing input{border-color:var(--err)!important}
+.field input[type=checkbox]{justify-self:start}
+.lbl{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+input[type=text],input[type=number],select.inp{width:100%;min-width:0;background:#191c22;border:1px solid var(--line);border-radius:4px;padding:3px 6px}
+.vec{display:flex;gap:4px;min-width:0}.vec label{display:flex;align-items:center;gap:3px;color:var(--dim);flex:1;min-width:0}
+.hint{color:var(--dim);font-size:11px;margin-top:8px}
+.empty{color:var(--dim);font-style:italic;padding:2px 0}
+kbd{font:10.5px Consolas,monospace;background:#191c22;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">Neo<b>Map</b></span><span class="badge">MOCKUP</span><span class="file" id="file"></span>
+  <button class="btn tool" data-tool="select" title="Select / move objects (V)">&#8598;</button>
+  <button class="btn tool" data-tool="brush" title="Brush (B), right-click erases, Alt+click picks">&#9998;</button>
+  <button class="btn tool" data-tool="rect" title="Rectangle fill (R), Shift = erase rect">&#9645;</button>
+  <button class="btn tool" data-tool="erase" title="Erase (E)">&#9003;</button>
+  <button class="btn tool" data-tool="object" title="Place object of selected prefab (O)">&#9670;</button>
+  <span class="sep"></span>
+  <button class="btn" data-toggle="showGrid" title="G">Grid</button>
+  <button class="btn" data-toggle="showColliders" title="C">Colliders</button>
+  <button class="btn" data-toggle="showObjects">Objects</button>
+  <span style="flex:1"></span>
+  <button class="btn" id="zoomOut">&minus;</button><span id="zoomLbl" style="width:42px;text-align:center"></span><button class="btn" id="zoomIn">+</button>
+  <span class="sep"></span>
+  <label class="btn">Import<input type="file" id="import" accept=".json" hidden></label>
+  <button class="btn primary" id="export">Export JSON</button>
+</header>
+<aside id="left"><section id="layersSec"></section><section id="prefabsSec"></section><section id="objectsSec"></section></aside>
+<main id="view"><canvas id="cv"></canvas></main>
+<div id="bottom">
+  <div class="tabs"><span class="tab" data-tab="json">level JSON</span><span class="tab" data-tab="schema">schema.json</span><span class="tab" data-tab="problems" id="probTab">Problems</span></div>
+  <pre id="out"></pre>
+</div>
+<aside id="right"><section id="insp"></section></aside>
+<footer><span id="stTool"></span><span id="stPos"></span><span class="r" id="stInfo"></span></footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const cv = $('#cv'), ctx = cv.getContext('2d');
+
+function h(tag, attrs = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const k of kids.flat(Infinity)) if (k != null && k !== false) e.append(k instanceof Node ? k : String(k));
+  for (const [k, v] of Object.entries(attrs)) { // after kids so select.value sees its options
+    if (v == null || v === false) continue;
+    if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (k === 'value' || k === 'checked') e[k] = v;
+    else if (k === 'class') e.className = v;
+    else e.setAttribute(k, v === true ? '' : v);
+  }
+  return e;
+}
+
+// ---- schema.json: what NeoSpecs.ExportSchema() would emit for every registered spec record ----
+const V2 = { type: 'object', properties: { X: { type: 'number' }, Y: { type: 'number' } } };
+const schema = {
+  SpriteSpec:      { type: 'object', properties: { Texture: { type: 'string' }, Depth: { type: 'number', default: 0 }, Layer: { type: 'integer', default: 0 } }, required: ['Texture'] },
+  TextSpec:        { type: 'object', properties: { Font: { type: 'string' }, Text: { type: 'string', default: '' }, Depth: { type: 'number', default: 0 } }, required: ['Font'] },
+  BoxColliderSpec: { type: 'object', properties: { Size: V2, Offset: { ...V2, default: { X: 0, Y: 0 } } }, required: ['Size'] },
+  CameraSpec:      { type: 'object', properties: { Zoom: { type: 'number', default: 1 }, Order: { type: 'integer', default: 0 } } },
+  WallTagSpec:     { type: 'object', properties: {} },
+  DoorSpec:        { type: 'object', properties: { Level: { type: 'string' }, Spawn: { type: 'string', default: 'entry' } }, required: ['Level'] },
+  SpawnPointSpec:  { type: 'object', properties: { Name: { type: 'string' } }, required: ['Name'] },
+  ItemSpec:        { type: 'object', properties: { Item: { type: 'string' }, Count: { type: 'integer', default: 1 } }, required: ['Item'] },
+};
+const builtin = new Set(['SpriteSpec', 'TextSpec', 'BoxColliderSpec', 'CameraSpec']);
+
+// ---- document state ----
+const map = { cellSize: 32, cols: 24, rows: 16 };
+let prefabs = {
+  floor: { char: '.', solid: false, specs: [{ spec: 'SpriteSpec', properties: { Texture: 'Sprites/floor', Depth: 1 } }] },
+  grass: { char: ',', solid: false, specs: [{ spec: 'SpriteSpec', properties: { Texture: 'Sprites/grass', Depth: 1 } }] },
+  wall:  { char: '#', solid: true,  specs: [{ spec: 'SpriteSpec', properties: { Texture: 'Sprites/wall' } }, { spec: 'WallTagSpec', properties: {} }] },
+  water: { char: '~', solid: true,  specs: [{ spec: 'SpriteSpec', properties: { Texture: 'Sprites/water', Depth: 0.5 } }] },
+  door:  { char: 'D', solid: false, specs: [{ spec: 'SpriteSpec', properties: { Texture: 'Sprites/door' } }, { spec: 'DoorSpec', id: 'door', properties: { Level: 'level2', Spawn: 'entry' } }] },
+  spawn: { char: 'S', solid: false, specs: [{ spec: 'SpawnPointSpec', properties: { Name: 'entry' } }] },
+  chest: { char: 'C', solid: false, specs: [{ spec: 'SpriteSpec', properties: { Texture: 'Sprites/chest' } }, { spec: 'ItemSpec', properties: {} }] },
+};
+const idx = (c, r) => r * map.cols + c;
+const inside = (c, r) => c >= 0 && r >= 0 && c < map.cols && r < map.rows;
+const newLayer = name => ({ name, visible: true, cells: new Array(map.cols * map.rows).fill(null) });
+function fillRect(l, c0, r0, c1, r1, v) {
+  for (let r = Math.min(r0, r1); r <= Math.max(r0, r1); r++)
+    for (let c = Math.min(c0, c1); c <= Math.max(c0, c1); c++)
+      if (inside(c, r)) l.cells[idx(c, r)] = v;
+}
+let layers = [newLayer('ground'), newLayer('main')];
+{
+  const [g, m] = layers;
+  fillRect(g, 0, 0, 23, 15, 'floor'); fillRect(g, 2, 9, 8, 14, 'grass');
+  fillRect(m, 0, 0, 23, 0, 'wall'); fillRect(m, 0, 15, 23, 15, 'wall'); fillRect(m, 0, 0, 0, 15, 'wall'); fillRect(m, 23, 0, 23, 15, 'wall');
+  m.cells[idx(23, 7)] = null;
+  fillRect(m, 12, 1, 12, 9, 'wall'); m.cells[idx(12, 5)] = null;
+  fillRect(m, 16, 10, 19, 13, 'water');
+}
+let objects = [
+  { name: 'Door-A', prefab: 'door', position: { X: 23 * 32, Y: 7 * 32 }, overrides: { door: { Level: 'level3' } } },
+  { name: 'PlayerSpawn', prefab: 'spawn', position: { X: 2 * 32, Y: 2 * 32 }, overrides: {} },
+  { name: 'Chest-1', prefab: 'chest', position: { X: 6 * 32, Y: 4 * 32 }, overrides: { ItemSpec: { Item: 'Key' } } },
+  { name: 'Chest-2', prefab: 'chest', position: { X: 20 * 32, Y: 3 * 32 }, overrides: {} },
+];
+const ui = { file: 'level1.neomap.json', zoom: 1.25, tool: 'brush', layer: 1, prefab: 'wall', showGrid: true, showColliders: true, showObjects: true,
+  sel: { kind: 'map' }, hover: null, down: false, btn: 0, rect: null, drag: null, tab: 'json', colliders: { boxes: [], solid: 0 } };
+
+// ---- helpers ----
+const specKey = s => s.id ?? s.spec;
+const effective = (o, sp) => ({ ...sp.properties, ...(o.overrides[specKey(sp)] ?? {}) });
+const texColors = { 'Sprites/floor': '#363c4a', 'Sprites/grass': '#3f6b3c', 'Sprites/wall': '#6e5f52', 'Sprites/water': '#2b6390', 'Sprites/door': '#9a6a38', 'Sprites/chest': '#b38a2a' };
+function colorOf(name) { // stand-in for texture previews, which a real editor would load from Content/
+  const p = prefabs[name]; if (!p) return '#f0f';
+  const tex = p.specs.find(s => s.spec === 'SpriteSpec')?.properties.Texture;
+  if (tex && texColors[tex]) return texColors[tex];
+  let hsh = 0; for (const ch of tex ?? name) hsh = (hsh * 31 + ch.charCodeAt(0)) >>> 0;
+  return `hsl(${hsh % 360} 38% 45%)`;
+}
+function freeChar() {
+  const used = new Set(Object.values(prefabs).map(p => p.char));
+  return [...'abcdefghijklmnopqrstuvwxyzABEFGHIJKLMNOPQRTUVWXYZ0123456789@$%&*+=?'].find(c => !used.has(c));
+}
+function uniqueName(prefab) {
+  const base = prefab[0].toUpperCase() + prefab.slice(1);
+  let n = 1; while (objects.some(o => o.name === `${base}-${n}`)) n++;
+  return `${base}-${n}`;
+}
+
+// same greedy merge as GridMapperComponent.BuildSolidColliders, across all layers
+function mergeColliders() {
+  const solid = i => layers.some(l => prefabs[l.cells[i]]?.solid);
+  const covered = new Uint8Array(map.cols * map.rows), boxes = [];
+  let count = 0;
+  for (let r = 0; r < map.rows; r++) for (let c = 0; c < map.cols; c++) {
+    const i = idx(c, r);
+    if (solid(i)) count++;
+    if (covered[i] || !solid(i)) continue;
+    let w = 1; while (c + w < map.cols && !covered[i + w] && solid(i + w)) w++;
+    let ht = 1;
+    grow: while (r + ht < map.rows) {
+      for (let k = 0; k < w; k++) { const j = idx(c + k, r + ht); if (covered[j] || !solid(j)) break grow; }
+      ht++;
+    }
+    for (let rr = r; rr < r + ht; rr++) for (let cc = c; cc < c + w; cc++) covered[idx(cc, rr)] = 1;
+    boxes.push({ c, r, w, h: ht });
+  }
+  return { boxes, solid: count };
+}
+
+// ---- canvas ----
+const cellPx = () => map.cellSize * ui.zoom;
+const objScreen = o => [(o.position.X / map.cellSize + .5) * cellPx(), (o.position.Y / map.cellSize + .5) * cellPx()];
+function draw() {
+  const s = cellPx(), W = map.cols * s, H = map.rows * s;
+  if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
+  ctx.fillStyle = '#0d0f13'; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `${Math.round(11 * ui.zoom)}px Consolas,monospace`;
+  layers.forEach((l, li) => {
+    if (!l.visible) return;
+    for (let r = 0; r < map.rows; r++) for (let c = 0; c < map.cols; c++) {
+      const n = l.cells[idx(c, r)]; if (!n) continue;
+      const x = c * s, y = r * s;
+      ctx.fillStyle = colorOf(n); ctx.fillRect(x, y, s, s);
+      if (prefabs[n]?.solid) { ctx.fillStyle = 'rgba(255,255,255,.07)'; ctx.fillRect(x, y, s, s * .18); ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(x, y + s * .82, s, s * .18); }
+      if (li === ui.layer) { ctx.fillStyle = 'rgba(255,255,255,.3)'; ctx.fillText(prefabs[n]?.char ?? '?', x + s / 2, y + s / 2 + 1); }
+    }
+  });
+  if (ui.showGrid) {
+    ctx.strokeStyle = 'rgba(255,255,255,.06)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let c = 0; c <= map.cols; c++) { ctx.moveTo(c * s + .5, 0); ctx.lineTo(c * s + .5, H); }
+    for (let r = 0; r <= map.rows; r++) { ctx.moveTo(0, r * s + .5); ctx.lineTo(W, r * s + .5); }
+    ctx.stroke();
+  }
+  ui.colliders = mergeColliders();
+  if (ui.showColliders) {
+    ctx.lineWidth = 2; ctx.fillStyle = 'rgba(255,92,122,.12)'; ctx.strokeStyle = 'rgba(255,92,122,.85)';
+    for (const b of ui.colliders.boxes) { ctx.fillRect(b.c * s, b.r * s, b.w * s, b.h * s); ctx.strokeRect(b.c * s + 1, b.r * s + 1, b.w * s - 2, b.h * s - 2); }
+  }
+  if (ui.showObjects) for (const o of objects) {
+    const [x, y] = objScreen(o), rad = s * .32, on = ui.sel.obj === o;
+    ctx.beginPath(); ctx.moveTo(x, y - rad); ctx.lineTo(x + rad, y); ctx.lineTo(x, y + rad); ctx.lineTo(x - rad, y); ctx.closePath();
+    ctx.fillStyle = colorOf(o.prefab); ctx.fill(); ctx.lineWidth = on ? 3 : 1.5; ctx.strokeStyle = on ? '#5aa9ff' : '#fff'; ctx.stroke();
+    ctx.font = `bold ${Math.round(10 * ui.zoom)}px Consolas,monospace`; ctx.fillStyle = '#fff'; ctx.fillText(prefabs[o.prefab]?.char ?? '?', x, y + 1);
+    ctx.font = `${Math.round(9 * ui.zoom)}px "Segoe UI",sans-serif`;
+    const tw = ctx.measureText(o.name).width + 8, th = 12 * ui.zoom;
+    ctx.fillStyle = 'rgba(0,0,0,.7)'; ctx.fillRect(x - tw / 2, y + rad + 3, tw, th);
+    ctx.fillStyle = on ? '#5aa9ff' : '#ddd'; ctx.fillText(o.name, x, y + rad + 3 + th / 2);
+  }
+  ctx.lineWidth = 2;
+  if (ui.rect) {
+    const { c0, r0, c1, r1, erase } = ui.rect;
+    ctx.setLineDash([6, 4]); ctx.strokeStyle = erase ? '#ff6b6b' : '#5aa9ff';
+    ctx.strokeRect(Math.min(c0, c1) * s + 1, Math.min(r0, r1) * s + 1, (Math.abs(c1 - c0) + 1) * s - 2, (Math.abs(r1 - r0) + 1) * s - 2);
+    ctx.setLineDash([]);
+  } else if (ui.hover && ui.tool !== 'select') {
+    ctx.strokeStyle = 'rgba(90,169,255,.9)'; ctx.strokeRect(ui.hover.c * s + 1, ui.hover.r * s + 1, s - 2, s - 2);
+  }
+  if (ui.sel.kind === 'cell') {
+    ctx.setLineDash([4, 3]); ctx.strokeStyle = '#fff'; ctx.strokeRect(ui.sel.c * s + 1, ui.sel.r * s + 1, s - 2, s - 2); ctx.setLineDash([]);
+  }
+}
+
+// ---- input ----
+const cellAt = e => ({ c: Math.floor(e.offsetX / cellPx()), r: Math.floor(e.offsetY / cellPx()) });
+function hitObject(e) {
+  if (!ui.showObjects) return null;
+  for (let i = objects.length - 1; i >= 0; i--) {
+    const [x, y] = objScreen(objects[i]);
+    if (Math.hypot(e.offsetX - x, e.offsetY - y) < cellPx() * .4) return objects[i];
+  }
+  return null;
+}
+function paint(p) {
+  if (!inside(p.c, p.r)) return;
+  layers[ui.layer].cells[idx(p.c, p.r)] = ui.tool === 'erase' || ui.btn === 2 ? null : ui.prefab;
+}
+function pick(p) {
+  for (let i = layers.length - 1; i >= 0; i--) {
+    const n = layers[i].visible && layers[i].cells[idx(p.c, p.r)];
+    if (n) { ui.prefab = n; ui.layer = i; return; }
+  }
+}
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('mousedown', e => {
+  const p = cellAt(e); ui.down = true; ui.btn = e.button;
+  if (e.altKey && ui.tool !== 'select') { if (inside(p.c, p.r)) pick(p); ui.down = false; }
+  else if (ui.tool === 'brush' || ui.tool === 'erase') paint(p);
+  else if (ui.tool === 'rect') ui.rect = { c0: p.c, r0: p.r, c1: p.c, r1: p.r, erase: e.shiftKey || e.button === 2 };
+  else if (ui.tool === 'object' && inside(p.c, p.r)) {
+    const o = { name: uniqueName(ui.prefab), prefab: ui.prefab, position: { X: p.c * map.cellSize, Y: p.r * map.cellSize }, overrides: {} };
+    objects.push(o); select({ kind: 'object', obj: o });
+  } else if (ui.tool === 'select') {
+    const o = hitObject(e);
+    if (o) { ui.drag = o; select({ kind: 'object', obj: o }); }
+    else select(inside(p.c, p.r) ? { kind: 'cell', ...p } : { kind: 'map' });
+  }
+  refresh();
+});
+cv.addEventListener('mousemove', e => {
+  const p = cellAt(e); ui.hover = inside(p.c, p.r) ? p : null;
+  if (ui.down) {
+    if (ui.tool === 'brush' || ui.tool === 'erase') paint(p);
+    else if (ui.rect) { ui.rect.c1 = p.c; ui.rect.r1 = p.r; }
+    else if (ui.drag) {
+      const cs = map.cellSize, X = e.offsetX / cellPx() - .5, Y = e.offsetY / cellPx() - .5;
+      ui.drag.position = e.shiftKey ? { X: Math.round(X * cs), Y: Math.round(Y * cs) } : { X: Math.round(X) * cs, Y: Math.round(Y) * cs };
+    }
+    refreshText();
+  }
+  $('#stPos').textContent = ui.hover ? `cell (${p.c}, ${p.r})  world (${p.c * map.cellSize}, ${p.r * map.cellSize})` : '';
+  draw();
+});
+cv.addEventListener('mouseleave', () => { ui.hover = null; draw(); });
+addEventListener('mouseup', () => {
+  if (!ui.down) return;
+  ui.down = false;
+  if (ui.rect) { const { c0, r0, c1, r1, erase } = ui.rect; fillRect(layers[ui.layer], c0, r0, c1, r1, erase ? null : ui.prefab); ui.rect = null; }
+  if (ui.drag) { ui.drag = null; renderInspector(); }
+  refresh();
+});
+$('#view').addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); zoom(e.deltaY < 0 ? 1.25 : .8); }, { passive: false });
+addEventListener('keydown', e => {
+  if (e.target.closest('input,select,textarea')) return;
+  const k = e.key.toLowerCase(), tools = { v: 'select', b: 'brush', r: 'rect', e: 'erase', o: 'object' };
+  if (tools[k]) setTool(tools[k]);
+  else if (k === 'g') toggle('showGrid');
+  else if (k === 'c') toggle('showColliders');
+  else if (k === '=' || k === '+') zoom(1.25);
+  else if (k === '-') zoom(.8);
+  else if ((k === 'delete' || k === 'backspace') && ui.sel.kind === 'object') deleteObject(ui.sel.obj);
+});
+function setTool(t) { ui.tool = t; cv.style.cursor = t === 'select' ? 'default' : 'crosshair'; refresh(); }
+function toggle(k) { ui[k] = !ui[k]; refresh(); }
+function zoom(f) { ui.zoom = Math.min(4, Math.max(.5, ui.zoom * f)); refresh(); }
+function deleteObject(o) { objects.splice(objects.indexOf(o), 1); select({ kind: 'map' }); refresh(); }
+document.querySelectorAll('[data-tool]').forEach(b => b.onclick = () => setTool(b.dataset.tool));
+document.querySelectorAll('[data-toggle]').forEach(b => b.onclick = () => toggle(b.dataset.toggle));
+document.querySelectorAll('[data-tab]').forEach(t => t.onclick = () => { ui.tab = t.dataset.tab; refreshText(); });
+$('#zoomIn').onclick = () => zoom(1.25);
+$('#zoomOut').onclick = () => zoom(.8);
+
+// ---- left panel ----
+const fill = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter(k => k != null && k !== false));
+function renderLeft() {
+  fill($('#layersSec'),
+    h('h3', {}, 'Layers', h('button', { class: 'mini', title: 'Add layer', onclick: addLayer }, '+')),
+    layers.map((l, i) => h('div', { class: 'row' + (i === ui.layer ? ' on' : ''), title: 'Double-click to rename', onclick: () => { ui.layer = i; refresh(); },
+        ondblclick: () => { const n = prompt('Rename layer', l.name); if (n) { l.name = n; refresh(); } } },
+      h('span', { class: 'eye' + (l.visible ? '' : ' off'), title: 'Toggle visibility', onclick: e => { e.stopPropagation(); l.visible = !l.visible; refresh(); } }, '\u25C9'),
+      l.name, h('span', { class: 'ch' }, l.cells.filter(Boolean).length))).reverse());
+  fill($('#prefabsSec'),
+    h('h3', {}, 'Prefabs', h('button', { class: 'mini', title: 'Add prefab', onclick: addPrefab }, '+')),
+    Object.entries(prefabs).map(([n, p]) => h('div', { class: 'row' + (n === ui.prefab ? ' on' : ''), onclick: () => { ui.prefab = n; select({ kind: 'prefab', name: n }); } },
+      h('span', { class: 'sw', style: `background:${colorOf(n)}` }), n, p.solid ? h('span', { class: 'tag' }, 'solid') : null, h('span', { class: 'ch' }, p.char))));
+  fill($('#objectsSec'),
+    h('h3', {}, `Objects (${objects.length})`, h('button', { class: 'mini', title: 'Object tool (O)', onclick: () => setTool('object') }, '+')),
+    objects.length ? objects.map(o => h('div', { class: 'row' + (ui.sel.obj === o ? ' on' : ''), onclick: () => select({ kind: 'object', obj: o }) },
+      h('span', { class: 'sw dia', style: `background:${colorOf(o.prefab)}` }), o.name, h('span', { class: 'ch' }, o.prefab))) : h('div', { class: 'empty' }, 'none'));
+}
+function addLayer() { const n = prompt('Layer name', 'layer' + (layers.length + 1)); if (!n) return; layers.push(newLayer(n)); ui.layer = layers.length - 1; refresh(); }
+function addPrefab() {
+  const n = prompt('Prefab name'); if (!n || prefabs[n]) return;
+  prefabs[n] = { char: freeChar(), solid: false, specs: [] }; ui.prefab = n; select({ kind: 'prefab', name: n }); refresh();
+}
+
+// ---- inspector ----
+function select(sel) { ui.sel = sel; renderInspector(); refresh(); }
+function field(label, ps, value, onChange, o = {}) {
+  const wrap = h('div', { class: 'field' });
+  const sync = v => { wrap.classList.toggle('over', !!o.isOver?.()); wrap.classList.toggle('missing', !!o.required && (v == null || v === '')); };
+  const commit = v => { onChange(v); sync(v); refresh(); };
+  let input;
+  if (ps.type === 'number' || ps.type === 'integer')
+    input = h('input', { type: 'number', step: ps.type === 'integer' ? 1 : 'any', value: value ?? '', placeholder: ps.default ?? '', onchange: e => commit(e.target.value === '' ? undefined : +e.target.value) });
+  else if (ps.type === 'boolean')
+    input = h('input', { type: 'checkbox', checked: !!(value ?? ps.default), onchange: e => commit(e.target.checked) });
+  else if (ps.type === 'object') {
+    const v = { X: 0, Y: 0, ...(ps.default ?? {}), ...(value ?? {}) };
+    input = h('span', { class: 'vec' }, ['X', 'Y'].map(k => h('label', {}, k, h('input', { type: 'number', step: 'any', value: v[k], onchange: e => { v[k] = +e.target.value; commit({ ...v }); } }))));
+  } else
+    input = h('input', { type: 'text', value: value ?? '', maxlength: o.maxlength, placeholder: ps.default ?? (o.required ? 'required' : ''), onchange: e => commit(e.target.value === '' ? undefined : e.target.value) });
+  const tip = `${label}: ${ps.type}${ps.default !== undefined ? ' = ' + JSON.stringify(ps.default) : ''}${o.required ? ' (required)' : ''}`;
+  wrap.append(h('span', { class: 'lbl', title: tip }, label + (o.required ? ' *' : '')), input,
+    o.reset ? h('button', { class: 'mini reset', title: 'Revert to prefab value', onclick: () => { o.reset(); renderInspector(); refresh(); } }, '\u21BA') : h('span'));
+  sync(value);
+  return wrap;
+}
+function specCard(sp, { get, set, isOver, reset, remove, extra }) {
+  const sc = schema[sp.spec];
+  const hd = h('div', { class: 'hd' }, sp.spec, sp.id ? h('span', { class: 'id' }, '#' + sp.id) : null,
+    remove ? h('button', { class: 'mini', title: 'Remove spec', onclick: remove }, '\u2715') : null);
+  if (!sc) return h('div', { class: 'card' }, hd, h('div', { class: 'bd empty' }, 'not in schema.json (unregistered spec)'));
+  const props = Object.entries(sc.properties);
+  return h('div', { class: 'card' }, hd, h('div', { class: 'bd' }, extra,
+    props.map(([k, ps]) => field(k, ps, get(k), v => set(k, v), { required: sc.required?.includes(k), isOver: isOver && (() => isOver(k)), reset: reset && (() => reset(k)) })),
+    props.length ? null : h('div', { class: 'empty' }, 'tag spec, no properties')));
+}
+function addSpecSelect(onAdd) {
+  const opts = f => Object.keys(schema).filter(f).map(k => h('option', { value: k }, k));
+  return h('select', { class: 'inp', onchange: e => e.target.value && onAdd({ spec: e.target.value, properties: {} }) },
+    h('option', { value: '' }, '+ Add spec\u2026'),
+    h('optgroup', { label: 'NeoGameLib' }, opts(k => builtin.has(k))),
+    h('optgroup', { label: 'Game project' }, opts(k => !builtin.has(k))));
+}
+function card(title, ...body) { return h('div', { class: 'card' }, h('div', { class: 'hd' }, title), h('div', { class: 'bd' }, body)); }
+function renderInspector() {
+  const s = ui.sel;
+  if (s.kind === 'object' && !objects.includes(s.obj)) ui.sel = { kind: 'map' };
+  const k = ui.sel.kind;
+  fill($('#insp'), k === 'prefab' ? prefabInspector(s.name) : k === 'object' ? objectInspector(s.obj) : k === 'cell' ? cellInspector(s.c, s.r) : mapInspector());
+}
+function prefabInspector(n) {
+  const p = prefabs[n];
+  const cells = layers.reduce((a, l) => a + l.cells.filter(x => x === n).length, 0), used = objects.filter(o => o.prefab === n).length;
+  const setProp = (sp, k, v) => { if (v === undefined) delete sp.properties[k]; else sp.properties[k] = v; };
+  const rerender = () => { renderInspector(); refresh(); };
+  return [
+    h('div', { class: 'title' }, 'Prefab \u00B7 ' + n), h('div', { class: 'sub' }, `${cells} cells \u00B7 ${used} objects`),
+    card('Prefab',
+      field('Legend char', { type: 'string' }, p.char, v => { if (v && !Object.values(prefabs).some(q => q !== p && q.char === v)) p.char = v; else queueMicrotask(rerender); }, { maxlength: 1 }),
+      field('Solid', { type: 'boolean' }, p.solid, v => p.solid = v)),
+    p.specs.map((sp, i) => specCard(sp, {
+      get: k => sp.properties[k], set: (k, v) => setProp(sp, k, v),
+      remove: () => { p.specs.splice(i, 1); rerender(); },
+      extra: field('id', { type: 'string' }, sp.id, v => sp.id = v),
+    })),
+    addSpecSelect(sp => { p.specs.push(sp); rerender(); }),
+    h('div', { class: 'hint' }, 'Solid cells merge into as few box colliders as possible on build (red overlay). Spec "id" is the key objects use in "overrides"; defaults to the spec name.'),
+  ];
+}
+function objectInspector(o) {
+  const p = prefabs[o.prefab];
+  const setOverride = (sp, k, v) => {
+    const key = specKey(sp), bag = o.overrides[key] ??= {};
+    if (v === undefined || JSON.stringify(v) === JSON.stringify(sp.properties[k])) delete bag[k]; else bag[k] = v;
+    if (!Object.keys(bag).length) delete o.overrides[key];
+  };
+  const title = h('div', { class: 'title' }, 'Object \u00B7 ' + o.name);
+  return [
+    title, h('div', { class: 'sub' }, 'instance of ', h('b', {}, o.prefab), ' \u00B7 blue = overridden'),
+    card('Object',
+      field('Name', { type: 'string' }, o.name, v => { if (v) { o.name = v; title.textContent = 'Object \u00B7 ' + v; } }),
+      h('div', { class: 'field' }, h('span', { class: 'lbl' }, 'Prefab'),
+        h('select', { class: 'inp', value: o.prefab, onchange: e => { o.prefab = e.target.value; renderInspector(); refresh(); } }, Object.keys(prefabs).map(k => h('option', { value: k }, k))), h('span')),
+      field('Position', V2, o.position, v => o.position = v)),
+    p ? p.specs.map(sp => specCard(sp, {
+      get: k => effective(o, sp)[k], set: (k, v) => setOverride(sp, k, v),
+      isOver: k => o.overrides[specKey(sp)]?.[k] !== undefined, reset: k => setOverride(sp, k, undefined),
+    })) : null,
+    h('button', { class: 'btn', style: 'width:100%;margin-top:4px', onclick: () => deleteObject(o) }, 'Delete object'),
+  ];
+}
+function cellInspector(c, r) {
+  const here = objects.filter(o => o.position.X === c * map.cellSize && o.position.Y === r * map.cellSize);
+  return [
+    h('div', { class: 'title' }, `Cell (${c}, ${r})`), h('div', { class: 'sub' }, `world (${c * map.cellSize}, ${r * map.cellSize})`),
+    card('Stack, top to bottom', layers.map(l => {
+      const n = l.cells[idx(c, r)];
+      return h('div', { class: 'row', onclick: () => n && select({ kind: 'prefab', name: n }) }, h('span', { class: 'lbl', style: 'width:70px' }, l.name),
+        n ? [h('span', { class: 'sw', style: `background:${colorOf(n)}` }), n] : h('span', { class: 'empty' }, 'empty'));
+    }).reverse()),
+    card('Objects here', here.length ? here.map(o => h('div', { class: 'row', onclick: () => select({ kind: 'object', obj: o }) }, h('span', { class: 'sw dia', style: `background:${colorOf(o.prefab)}` }), o.name)) : h('div', { class: 'empty' }, 'none')),
+    h('div', { class: 'hint' }, 'Alt+click with a paint tool picks the top tile.'),
+  ];
+}
+function resize(cols, rows) {
+  cols = Math.max(1, cols | 0); rows = Math.max(1, rows | 0);
+  for (const l of layers) {
+    const cells = new Array(cols * rows).fill(null);
+    for (let r = 0; r < Math.min(rows, map.rows); r++) for (let c = 0; c < Math.min(cols, map.cols); c++) cells[r * cols + c] = l.cells[idx(c, r)];
+    l.cells = cells;
+  }
+  map.cols = cols; map.rows = rows;
+}
+function mapInspector() {
+  const int = { type: 'integer' };
+  return [
+    h('div', { class: 'title' }, 'Map'), h('div', { class: 'sub' }, ui.file),
+    card('Grid',
+      field('Cell size', int, map.cellSize, v => {
+        if (!(v > 0)) return;
+        for (const o of objects) o.position = { X: o.position.X / map.cellSize * v, Y: o.position.Y / map.cellSize * v };
+        map.cellSize = v;
+      }),
+      field('Columns', int, map.cols, v => v > 0 && resize(v, map.rows)),
+      field('Rows', int, map.rows, v => v > 0 && resize(map.cols, v))),
+    h('div', { class: 'hint' }, h('kbd', {}, 'V'), ' select  ', h('kbd', {}, 'B'), ' brush  ', h('kbd', {}, 'R'), ' rect  ', h('kbd', {}, 'E'), ' erase  ', h('kbd', {}, 'O'), ' object', h('br'),
+      h('kbd', {}, 'G'), ' grid  ', h('kbd', {}, 'C'), ' colliders  ', h('kbd', {}, 'Ctrl'), '+wheel zoom  ', h('kbd', {}, 'Del'), ' delete object', h('br'),
+      'Right-click erases, Alt+click picks, Shift while dragging an object disables snapping.'),
+  ];
+}
+
+// ---- JSON in/out ----
+function exportMap() {
+  return {
+    cellSize: { X: map.cellSize, Y: map.cellSize },
+    prefabs: Object.fromEntries(Object.entries(prefabs).map(([n, p]) => [n, {
+      ...(p.solid ? { solid: true } : {}),
+      specs: p.specs.map(s => ({ spec: s.spec, ...(s.id ? { id: s.id } : {}), properties: s.properties })),
+    }])),
+    layers: layers.map(l => {
+      const legend = {}, rows = [];
+      for (let r = 0; r < map.rows; r++) {
+        let line = '';
+        for (let c = 0; c < map.cols; c++) { const n = l.cells[idx(c, r)]; const ch = n ? prefabs[n].char : ' '; if (n) legend[ch] = n; line += ch; }
+        rows.push(line);
+      }
+      if (rows.some(x => x.includes(' '))) legend[' '] = null;
+      return { name: l.name, legend, rows };
+    }),
+    objects: objects.map(o => ({ name: o.name, prefab: o.prefab, position: o.position, ...(Object.keys(o.overrides).length ? { overrides: o.overrides } : {}) })),
+  };
+}
+function importMap(j) {
+  prefabs = {};
+  for (const [n, p] of Object.entries(j.prefabs ?? {}))
+    prefabs[n] = { char: null, solid: !!p.solid, specs: (p.specs ?? []).map(s => ({ spec: s.spec, id: s.id, properties: { ...s.properties } })) };
+  map.cellSize = j.cellSize?.X ?? 32;
+  map.rows = j.layers?.[0]?.rows.length ?? 16;
+  map.cols = j.layers?.[0]?.rows[0]?.length ?? 24;
+  layers = (j.layers ?? []).map(l => {
+    const L = newLayer(l.name);
+    l.rows.forEach((line, r) => [...line].forEach((ch, c) => {
+      const n = l.legend[ch];
+      if (n && prefabs[n] && inside(c, r)) { L.cells[idx(c, r)] = n; prefabs[n].char ??= ch; }
+    }));
+    return L;
+  });
+  if (!layers.length) layers = [newLayer('main')];
+  for (const p of Object.values(prefabs)) p.char ??= freeChar();
+  objects = (j.objects ?? []).map(o => ({ name: o.name, prefab: o.prefab, position: { ...o.position }, overrides: structuredClone(o.overrides ?? {}) }));
+  ui.layer = 0; ui.prefab = Object.keys(prefabs)[0]; ui.sel = { kind: 'map' };
+}
+$('#export').onclick = () => {
+  const a = h('a', { href: URL.createObjectURL(new Blob([JSON.stringify(exportMap(), null, 2)], { type: 'application/json' })), download: ui.file });
+  a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$('#import').onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try { importMap(JSON.parse(await f.text())); ui.file = f.name; } catch (err) { alert('Not a NeoMap file: ' + err.message); }
+  e.target.value = ''; renderInspector(); refresh();
+};
+
+// the editor-side version of what NeoMap.Build would throw on, plus softer warnings
+function problems() {
+  const out = [];
+  const check = (where, sp, props) => {
+    const sc = schema[sp.spec];
+    if (!sc) return out.push(['err', `${where}: spec "${sp.spec}" is not registered`]);
+    for (const req of sc.required ?? []) if (props[req] == null || props[req] === '') out.push(['err', `${where}: ${sp.spec}.${req} is required`]);
+    for (const k of Object.keys(props)) if (!(k in sc.properties)) out.push(['warn', `${where}: ${sp.spec} has no property "${k}"`]);
+  };
+  for (const n of new Set(layers.flatMap(l => l.cells).filter(Boolean))) for (const sp of prefabs[n].specs) check(`prefab "${n}" (painted)`, sp, sp.properties);
+  for (const o of objects) {
+    const p = prefabs[o.prefab];
+    if (!p) { out.push(['err', `${o.name}: unknown prefab "${o.prefab}"`]); continue; }
+    for (const sp of p.specs) check(o.name, sp, effective(o, sp));
+    for (const k of Object.keys(o.overrides)) if (!p.specs.some(sp => specKey(sp) === k)) out.push(['warn', `${o.name}: override "${k}" matches no spec in prefab "${o.prefab}"`]);
+    if (!inside(o.position.X / map.cellSize, o.position.Y / map.cellSize)) out.push(['warn', `${o.name}: outside the map bounds`]);
+  }
+  return out;
+}
+const esc = s => s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const hl = j => esc(JSON.stringify(j, null, 2)).replace(/("(?:\\.|[^"\\])*")(\s*:)?|\b(-?\d+(?:\.\d+)?)\b|\b(true|false|null)\b/g,
+  (m, s, colon, n, l) => s ? `<span class="${colon ? 'k' : 's'}">${s}</span>${colon ?? ''}` : n ? `<span class="n">${n}</span>` : `<span class="l">${l}</span>`);
+
+function refreshText() {
+  const probs = problems(), errs = probs.filter(p => p[0] === 'err').length;
+  $('#probTab').innerHTML = `Problems <span style="color:${errs ? 'var(--err)' : probs.length ? 'var(--warn)' : 'var(--dim)'}">(${probs.length})</span>`;
+  document.querySelectorAll('[data-tab]').forEach(t => t.classList.toggle('on', t.dataset.tab === ui.tab));
+  $('#out').innerHTML =
+    ui.tab === 'json' ? hl(exportMap()) :
+    ui.tab === 'schema' ? `<span class="c">// generated by NeoSpecs.ExportSchema() from the registered spec records. read-only here</span>\n` + hl(schema) :
+    probs.length ? probs.map(([lvl, msg]) => `<span class="prob ${lvl}">${esc(msg)}</span>`).join('') : '<span class="c">no problems</span>';
+  $('#stTool').textContent = `${ui.tool}  \u00B7  layer "${layers[ui.layer]?.name}"  \u00B7  prefab "${ui.prefab}"`;
+  $('#stInfo').textContent = `${map.cols}\u00D7${map.rows} @ ${map.cellSize}px  \u00B7  ${ui.colliders.boxes.length} colliders from ${ui.colliders.solid} solid cells`;
+}
+function refresh() {
+  ui.layer = Math.min(ui.layer, layers.length - 1);
+  document.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('on', b.dataset.tool === ui.tool));
+  document.querySelectorAll('[data-toggle]').forEach(b => b.classList.toggle('on', ui[b.dataset.toggle]));
+  $('#zoomLbl').textContent = Math.round(ui.zoom * 100) + '%';
+  $('#file').textContent = ui.file;
+  draw(); renderLeft(); refreshText();
+}
+renderInspector();
+refresh();
+</script>
+</body>
+</html>
