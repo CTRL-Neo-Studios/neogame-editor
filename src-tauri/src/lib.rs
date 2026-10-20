@@ -1,5 +1,6 @@
 #[cfg(desktop)]
 mod window_effects;
+mod build;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,6 +17,7 @@ pub fn run() {
     #[cfg(desktop)] let builder = builder.plugin(tauri_plugin_decorum::init()); // decorum (1/2)
 
     builder
+        .invoke_handler(tauri::generate_handler![build::dotnet_build])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

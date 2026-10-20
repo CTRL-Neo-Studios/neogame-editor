@@ -35,12 +35,13 @@ export function deref(schema: NeoSchemaFile, node: SchemaNode | undefined): Sche
     return current
 }
 
-// NeoSchema writes nullable values as anyOf [T, { type: null }]; editors want T plus a flag
+// NeoSchema writes nullable values as anyOf [T, { type: null }]; editors want T plus a flag.
+// annotations (x-neo-asset, description, default) sit on the anyOf wrapper, not on T, so carry them over
 function unwrapNullable(node: SchemaNode): { node: SchemaNode, nullable: boolean } {
-    const options = node.anyOf
+    const { anyOf: options, ...annotations } = node
     if (!options || options.length !== 2) return { node, nullable: false }
     const other = options.find(o => o.type !== 'null')
-    return other && options.some(o => o.type === 'null') ? { node: other, nullable: true } : { node, nullable: false }
+    return other && options.some(o => o.type === 'null') ? { node: { ...other, ...annotations }, nullable: true } : { node, nullable: false }
 }
 
 // an array of spec/action entries is the one shape that needs its own editor; recognise it by the entry def it points at

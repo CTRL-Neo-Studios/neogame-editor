@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "NeoMap Editor",
-  "version": "0.1.0",
-  "identifier": "studio.ctrlneo.neomap-editor",
+  "version": "0.1.1",
+  "identifier": "dev.ctrlneo.neomap-editor",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:3000",

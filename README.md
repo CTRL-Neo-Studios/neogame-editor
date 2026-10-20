@@ -1,59 +1,27 @@
-# Nuxt UI v4 + Nuxt v4 + Tauri v2 Starter
+# NeoMap Editor
 
-Look at [Nuxt docs](https://nuxt.com/docs/getting-started/introduction) and [Nuxt UI docs](https://ui3.nuxt.dev) to learn more.
+This is meant to be used alongside [NeoGameLib](https://github.com/CTRL-Neo-Studios/NeoGameLib).
 
-## Setup
+# Quick Start
 
-Make sure to install the dependencies:
+You should have the NeoGameLib 0.4.0+ already installed in your MonoGame Project. If not, go install it, instructions in the library repo.
 
-```bash
-bun i
-```
+If you have installed: run the `dotnet build` command. This will generate the needed files for NeoMap Editor to recognize your MonoGame project.
 
-## Development Server
+Then, you can:
+1. Open the Editor
+2. Select your project folder and open it
+3. Start editing.
 
-Start the development server on `http://localhost:3000`:
+If you have custom specs you'd like to add to your project schema for use in the editor:
 
-```bash
-bun run dev
-```
+1. Start a terminal in your project folder root
+2. run `dotnet build`
+3. Open NeoMap Editor
+4. Select your project folder and open it
 
-## Production
+# Folders and naming (NeoGameLib 0.4.1+, NeoMap Editor 0.1.1+)
 
-Build the application for production:
-
-```bash
-bun run build
-```
-
-Locally preview production build:
-
-```bash
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
-
-## Desktop Window Effects
-
-Two desktop-only effects are enabled by default:
-
-- [tauri-plugin-decorum](https://github.com/clearlysid/tauri-plugin-decorum): overlay titlebar and inset macOS traffic lights
-- [window-vibrancy](https://github.com/tauri-apps/window-vibrancy): native blur behind the window (macOS, Windows; no-op on Linux)
-
-Neither requires `macOSPrivateApi`. They are excluded from iOS/Android builds by a desktop-only target in `src-tauri/Cargo.toml` and `#[cfg(desktop)]` in `src-tauri/src/lib.rs`, so mobile builds need no changes.
-
-To disable an effect, comment out its lines in `src-tauri/src/lib.rs`. Uncomment them to re-enable.
-
-| Effect   | Lines                                                                                                                           |
-|----------|---------------------------------------------------------------------------------------------------------------------------------|
-| Vibrancy | `window_effects::vibrancy(&main)?;`                                                                                             |
-| Decorum  | `#[cfg(desktop)] let builder = builder.plugin(tauri_plugin_decorum::init()); // decorum (1/2)` and `window_effects::decorum(&main)?; // decorum (2/2)` |
-
-Effect options (vibrancy material, Windows blur color, traffic light inset) live in `src-tauri/src/window_effects.rs`.
-
-Notes:
-
-- Vibrancy only shows through transparent page areas. Nuxt UI paints an opaque `body` background (`bg-default`), so set `html, body { background: transparent; }` where you want the blur visible.
-- On macOS, vibrancy uses decorum's `make_transparent()` helper, so the `tauri-plugin-decorum` crate must stay in `Cargo.toml` even when the decorum plugin lines are commented out.
-- To remove a crate entirely, also delete it from `src-tauri/Cargo.toml` and its function from `window_effects.rs`. Removing decorum also means removing `src-tauri/capabilities/desktop.json`, which grants `decorum:allow-show-snap-overlay`.
+- Maps and prefab libraries can live in subfolders of `Data/NeoMaps/` and `Data/NeoPrefabs/`; the folder is part of the name (`forest/level1`). Moving or renaming one from the project page rewrites every reference to it (map `prefabs` lists, world actions) across the project.
+- Map and library names are file paths: ASCII letters, digits, `_`, `-`, with spaces and dots allowed inside a segment but not at either end. Names that differ only by case are rejected.
+- Prefab and collider-group names are plain keys: anything except `/`, control characters and leading/trailing spaces. Use a prefab folder instead of `/` (`MountainTile Full` in folder `MountainTile`). Prefab folders are editor-only grouping and never change a prefab's name.

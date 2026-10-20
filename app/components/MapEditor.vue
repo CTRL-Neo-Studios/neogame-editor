@@ -1,82 +1,112 @@
 <script setup lang="ts">
+import type { Problem } from '~/utils/problems'
+
 const props = defineProps<{ tab: MapTab }>()
 const $t = useAppTabs()
 const project = useProject()
+const { sidebar, inspector, bottom, bottomView, bottomHeight } = usePanels()
 
 const schema = computed(() => project.state.value?.schema ?? null)
 const prefabs = computed(() => $t.prefabsOf(props.tab))
-const bottomOpen = ref(true)
-// selection/hover outline color on the canvas; white reads on every tile palette
-const highlight = useLocalStorage('neo-highlight', '#ffffff')
 
-const tools: { tool: Tool, icon: string, label: string, key: string }[] = [
-    { tool: 'select', icon: 'i-lucide-mouse-pointer-2', label: 'Select / move', key: 'V' },
-    { tool: 'brush', icon: 'i-lucide-paintbrush', label: 'Brush — right-click erases, Alt+click picks', key: 'B' },
-    { tool: 'rect', icon: 'i-lucide-square-dashed', label: 'Rectangle fill — Shift erases', key: 'R' },
-    { tool: 'erase', icon: 'i-lucide-eraser', label: 'Erase', key: 'E' },
-    { tool: 'object', icon: 'i-lucide-diamond-plus', label: 'Place object of the selected prefab', key: 'O' },
-]
+const problems = ref<Problem[]>([])
+const json = ref('')
+const errors = computed(() => problems.value.filter(p => p.level === 'error').length)
 
-const setTool = (tool: Tool) => props.tab.tool = tool
-const zoomBy = (factor: number) => props.tab.zoom = Math.min(8, Math.max(0.25, props.tab.zoom * factor))
+// validation compiles and walks the whole map, so batch rapid edits (a brush stroke) into one pass
+watchDebounced(() => [props.tab.map, prefabs.value, project.state.value], () => {
+    const state = project.state.value
+    try {
+        json.value = stringify(toMapFile(props.tab.map))
+        problems.value = state ? mapProblems(props.tab, prefabs.value, state) : []
+    }
+    catch (e) {
+        problems.value = [{ level: 'error', message: e instanceof Error ? e.message : String(e), where: props.tab.name, target: { kind: 'map' } }]
+    }
+}, { debounce: 250, deep: true, immediate: true })
 
-defineShortcuts({
-    v: () => setTool('select'),
-    b: () => setTool('brush'),
-    r: () => setTool('rect'),
-    e: () => setTool('erase'),
-    o: () => setTool('object'),
-    g: () => props.tab.showGrid = !props.tab.showGrid,
-    c: () => props.tab.showColliders = !props.tab.showColliders,
-    meta_z: () => $t.undo(props.tab),
-    meta_shift_z: () => $t.redo(props.tab),
-    meta_y: () => $t.redo(props.tab),
-})
+const left = reactive(useResizable('neo-sidebar', { side: 'left', minSize: 180, maxSize: 480, defaultSize: 240, unit: 'px', storage: 'local', collapsible: true }))
+const right = reactive(useResizable('neo-inspector', { side: 'right', minSize: 260, maxSize: 640, defaultSize: 320, unit: 'px', storage: 'local', collapsible: true }))
+// dragging a side panel past its minimum hides it: same toggle as the View menu / status bar; uncollapsing restores its width for next time
+watch(() => left.isCollapsed, (c) => { if (c) { left.collapse(false); sidebar.value = false } }, { immediate: true })
+watch(() => right.isCollapsed, (c) => { if (c) { right.collapse(false); inspector.value = false } }, { immediate: true })
+
+const root = ref<HTMLElement>()
+const bottomDragging = ref(false)
+function resizeBottom(e: PointerEvent) {
+    const handle = e.currentTarget as HTMLElement
+    const startY = e.clientY
+    const startHeight = bottomHeight.value
+    const max = (root.value?.clientHeight ?? 0) * 0.7
+    const move = (ev: PointerEvent) => bottomHeight.value = Math.round(Math.min(max, Math.max(96, startHeight + startY - ev.clientY)))
+    const up = () => {
+        bottomDragging.value = false
+        handle.removeEventListener('pointermove', move)
+        handle.removeEventListener('pointerup', up)
+        handle.removeEventListener('pointercancel', up)
+    }
+    handle.setPointerCapture(e.pointerId)
+    bottomDragging.value = true
+    handle.addEventListener('pointermove', move)
+    handle.addEventListener('pointerup', up)
+    handle.addEventListener('pointercancel', up)
+}
 </script>
 
 <template>
-    <div class="flex h-full min-h-0">
-        <MapSidebar :tab="tab" :prefabs="prefabs" class="w-60 shrink-0 border-e border-default" />
+    <div ref="root" class="flex h-full min-h-0 flex-col">
+        <MapToolbar :tab="tab" :prefabs="prefabs" />
 
-        <div class="flex min-w-0 flex-1 flex-col">
-            <div class="flex h-10 shrink-0 items-center gap-1 border-b border-default px-2">
-                <UTooltip v-for="t in tools" :key="t.tool" :text="t.label" :kbds="[t.key]">
-                    <UButton
-                        :icon="t.icon"
-                        size="sm"
-                        color="neutral"
-                        :variant="tab.tool === t.tool ? 'solid' : 'ghost'"
-                        :aria-label="t.label"
-                        @click="setTool(t.tool)"
-                    />
-                </UTooltip>
-                <USeparator orientation="vertical" class="mx-1 h-5" />
-                <UButton size="sm" color="neutral" :variant="tab.showGrid ? 'subtle' : 'ghost'" icon="i-lucide-grid-3x3" label="Grid" @click="tab.showGrid = !tab.showGrid" />
-                <UButton size="sm" color="neutral" :variant="tab.showColliders ? 'subtle' : 'ghost'" icon="i-lucide-box-select" label="Colliders" @click="tab.showColliders = !tab.showColliders" />
-                <UButton size="sm" color="neutral" :variant="tab.showObjects ? 'subtle' : 'ghost'" icon="i-lucide-diamond" label="Objects" @click="tab.showObjects = !tab.showObjects" />
-                <USeparator orientation="vertical" class="mx-1 h-5" />
-                <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-undo-2" :disabled="!tab.undo.length" aria-label="Undo" @click="$t.undo(tab)" />
-                <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-redo-2" :disabled="!tab.redo.length" aria-label="Redo" @click="$t.redo(tab)" />
-                <div class="flex-1" />
-                <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-minus" aria-label="Zoom out" @click="zoomBy(0.8)" />
-                <span class="w-12 text-center text-xs tabular-nums text-muted">{{ Math.round(tab.zoom * 100) }}%</span>
-                <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-plus" aria-label="Zoom in" @click="zoomBy(1.25)" />
-                <USeparator orientation="vertical" class="mx-1 h-5" />
-                <UTooltip text="Highlight color">
-                    <input v-model="highlight" type="color" aria-label="Highlight color" class="size-6 cursor-pointer rounded border border-default bg-transparent p-0.5">
-                </UTooltip>
-            </div>
-
-            <div class="relative min-h-0 flex-1">
-                <MapCanvas v-if="schema" :tab="tab" :prefabs="prefabs" :schema="schema" :highlight="highlight" class="absolute inset-0" />
-                <div v-else class="flex h-full items-center justify-center">
-                    <UEmpty icon="i-lucide-file-x" title="No schema" description="Build the game once so NeoGameLib writes Data/<Game>.neoschema.json." />
+        <div class="flex min-h-0 flex-1">
+            <div v-if="sidebar" :ref="el => left.el = el as HTMLElement" class="relative flex shrink-0 border-e border-default" :style="{ width: `${left.size}px` }">
+                <MapSidebar :tab="tab" :prefabs="prefabs" class="min-w-0 flex-1" />
+                <div
+                    role="separator"
+                    class="group absolute inset-y-0 -end-0.5 z-10 flex w-1 cursor-col-resize justify-center"
+                    @mousedown="left.onMouseDown"
+                    @touchstart="left.onTouchStart"
+                    @dblclick="left.onDoubleClick"
+                >
+                    <div class="w-px transition-colors group-hover:bg-primary" :class="left.isDragging && 'bg-primary'" />
                 </div>
             </div>
 
-            <ProblemsPanel v-model:open="bottomOpen" :tab="tab" :prefabs="prefabs" class="shrink-0 border-t border-default" />
+            <div class="relative min-w-0 flex-1">
+                <MapCanvas v-if="schema" :tab="tab" :prefabs="prefabs" :schema="schema" class="absolute inset-0" />
+                <div v-else class="flex h-full items-center justify-center">
+                    <UEmpty icon="i-lucide-file-x" title="No schema" description="Build the game once so NeoGameLib writes Data/<Game>.neoschema.json.">
+                        <template #actions>
+                            <RefreshSpecsButton />
+                        </template>
+                    </UEmpty>
+                </div>
+            </div>
+
+            <div v-if="inspector" :ref="el => right.el = el as HTMLElement" class="relative flex shrink-0 border-s border-default" :style="{ width: `${right.size}px` }">
+                <MapInspector :tab="tab" :prefabs="prefabs" class="min-w-0 flex-1" />
+                <div
+                    role="separator"
+                    class="group absolute inset-y-0 -start-0.5 z-10 flex w-1 cursor-col-resize justify-center"
+                    @mousedown="right.onMouseDown"
+                    @touchstart="right.onTouchStart"
+                    @dblclick="right.onDoubleClick"
+                >
+                    <div class="w-px transition-colors group-hover:bg-primary" :class="right.isDragging && 'bg-primary'" />
+                </div>
+            </div>
         </div>
 
-        <MapInspector :tab="tab" :prefabs="prefabs" class="w-80 shrink-0 border-s border-default" />
+        <div v-if="bottom" class="relative flex max-h-[70%] min-h-24 shrink-0 flex-col border-t border-default" :style="{ height: `${bottomHeight}px` }">
+            <div
+                role="separator"
+                class="group absolute inset-x-0 -top-0.5 z-10 flex h-1 cursor-row-resize flex-col justify-center touch-none"
+                @pointerdown="resizeBottom"
+            >
+                <div class="h-px transition-colors group-hover:bg-primary" :class="bottomDragging && 'bg-primary'" />
+            </div>
+            <ProblemsPanel :tab="tab" :problems="problems" :json="json" :view="bottomView" class="min-h-0 flex-1" />
+        </div>
+
+        <StatusBar :errors="errors" :warnings="problems.length - errors" />
     </div>
 </template>

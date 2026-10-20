@@ -1,37 +1,16 @@
 <script setup lang="ts">
-import { open as openDialog } from '@tauri-apps/plugin-dialog'
 import { platform } from '@tauri-apps/plugin-os'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import {useProject} from "~/composables/project/useProject.ts";
-import {useRecents} from "~/composables/io/useRecents.ts";
-import {useAppTabs} from "~/composables/app/useAppTabs.ts";
 
-const project = useProject()
-const recents = useRecents()
 const $t = useAppTabs()
-const toast = useToast()
+const { commands, nativeMenu, openProject, saveActive } = useAppCommands()
+const { menus } = useAppMenu(commands, nativeMenu)
 
 // room for the native window controls decorum draws over our topbar: macOS traffic lights sit top-left
 // (inset 12/16 in window_effects.rs), decorum's Windows min/max/close (3 x 58px) and Linux buttons top-right
 const os = isTauri() ? platform() : null
 const headerInset = os === 'macos' ? { paddingLeft: '76px' } : os === 'windows' ? { paddingRight: '180px' } : os === 'linux' ? { paddingRight: '96px' } : undefined
-
-async function openProject(path?: string) {
-    const root = path ?? await openDialog({ directory: true, title: 'Open game project (folder with Data/)' })
-    if (typeof root !== 'string') return
-    if (!(await $t.confirmDiscard($t.tabs.value))) return
-    try {
-        await project.open(root)
-        await recents.add(root)
-        $t.tabs.value = []
-        $t.activeId.value = null
-        await navigateTo('/')
-    }
-    catch (e) {
-        toast.add({ title: 'Could not open project', description: e instanceof Error ? e.message : String(e), color: 'error', icon: 'i-lucide-folder-x' })
-    }
-}
 
 // quitting with unsaved tabs asks first, like closing a single tab does
 if (isTauri()) {
@@ -39,24 +18,6 @@ if (isTauri()) {
         if (!(await $t.confirmDiscard($t.tabs.value))) event.preventDefault()
     })
 }
-
-async function saveActive() {
-    const tab = $t.active.value
-    if (!tab) return
-    try {
-        await $t.save(tab)
-        toast.add({ title: `Saved ${tab.name}`, color: 'success', icon: 'i-lucide-check', duration: 1500 })
-    }
-    catch (e) {
-        toast.add({ title: 'Save failed', description: e instanceof Error ? e.message : String(e), color: 'error' })
-    }
-}
-
-defineShortcuts({
-    meta_s: saveActive,
-    meta_o: () => openProject(),
-    meta_w: () => $t.activeId.value && $t.close($t.activeId.value),
-})
 
 provide('neo:openProject', openProject)
 
@@ -86,6 +47,11 @@ function selectTab(id: string) {
                 active-variant="soft"
                 aria-label="Project"
             />
+            <template v-if="!nativeMenu">
+                <UDropdownMenu v-for="menu in menus" :key="menu.label" :items="menu.items" :content="{ align: 'start' }" :ui="{ content: 'min-w-56' }">
+                    <UButton variant="ghost" color="neutral" size="sm" :label="menu.label" class="px-2" />
+                </UDropdownMenu>
+            </template>
             <USeparator orientation="vertical" class="mx-1 h-5" />
             <div class="flex min-w-0 flex-1 items-center gap-0.5 self-stretch overflow-x-auto" data-tauri-drag-region>
                 <div
@@ -131,5 +97,6 @@ function selectTab(id: string) {
         <div class="relative min-h-0 flex-1">
             <slot />
         </div>
+        <BuildLog />
     </div>
 </template>

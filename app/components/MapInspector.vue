@@ -41,17 +41,23 @@ function setCellSize(v: JsonValue | undefined) {
 }
 
 const shortcuts: { keys: string[], label: string }[] = [
-    { keys: ['V'], label: 'Select / move' },
+    { keys: ['V'], label: 'Select tiles / objects' },
+    { keys: ['M'], label: 'Move selection' },
     { keys: ['B'], label: 'Brush' },
     { keys: ['R'], label: 'Rectangle fill' },
     { keys: ['E'], label: 'Erase' },
     { keys: ['O'], label: 'Place object' },
     { keys: ['G'], label: 'Toggle grid' },
     { keys: ['C'], label: 'Toggle colliders' },
-    { keys: ['meta', 'Z'], label: 'Undo' },
-    { keys: ['meta', 'Y'], label: 'Redo' },
+    { keys: ['T'], label: 'Toggle textures' },
+    { keys: ['meta', 'C'], label: 'Copy tiles' },
+    { keys: ['meta', 'X'], label: 'Cut tiles' },
+    { keys: ['meta', 'V'], label: 'Paste tiles' },
+    { keys: ['Del'], label: 'Delete selection' },
+    { keys: ['Esc'], label: 'Clear selection / cancel move' },
+    { keys: ['shift', 'drag'], label: 'Add to selection' },
+    { keys: ['meta', 'drag'], label: 'Remove from selection' },
     { keys: ['meta', 'wheel'], label: 'Zoom' },
-    { keys: ['Del'], label: 'Delete object' },
     { keys: ['alt', 'click'], label: 'Pick top tile' },
     { keys: ['right-click'], label: 'Erase' },
     { keys: ['shift'], label: 'Drag object without snapping' },
@@ -356,7 +362,11 @@ const header = computed(() => {
                         @update:model-value="v => setList('specs', 'specs', v)"
                     />
                 </template>
-                <UAlert v-else icon="i-lucide-file-x" color="warning" variant="subtle" title="No schema loaded" description="Spec editing needs Data/<Game>.neoschema.json." />
+                <UAlert v-else icon="i-lucide-file-x" color="warning" variant="subtle" title="No schema loaded" description="Spec editing needs Data/<Game>.neoschema.json.">
+                    <template #actions>
+                        <RefreshSpecsButton size="xs" variant="outline" />
+                    </template>
+                </UAlert>
 
                 <UButton icon="i-lucide-trash-2" label="Delete object" color="error" variant="soft" block @click="deleteObject" />
 

@@ -5,7 +5,9 @@ import type { NeoMapObjectFile, NeoPrefab, NeoSchemaFile, Vec2 } from '#shared/t
 // Plain Canvas 2D, same approach as the reference mockup: one draw() renders everything under a single
 // world->screen transform, so selection, hover and previews always follow pan/zoom.
 
-const props = defineProps<{ tab: MapTab, prefabs: Record<string, NeoPrefab>, schema: NeoSchemaFile, highlight: string }>()
+const props = defineProps<{ tab: MapTab, prefabs: Record<string, NeoPrefab>, schema: NeoSchemaFile }>()
+// selection/hover outline color; MapToolbar edits the same key
+const highlight = useLocalStorage('neo-highlight', '#ffffff')
 
 const $tabs = useAppTabs()
 const project = useProject()
@@ -14,6 +16,8 @@ const toast = useToast()
 const VIEW_BG = '#2b2d33'
 const MAP_BG = '#1f2126'
 const OTHER_LAYER_ALPHA = 0.6
+const OUT_OF_SCOPE_ALPHA = 0.3
+const TRIGGER = '45,212,191'
 
 const container = ref<HTMLDivElement>()
 const canvas = ref<HTMLCanvasElement>()
@@ -32,6 +36,10 @@ type Drag =
     | { kind: 'paint', value: string | null, last: Vec2 }
     | { kind: 'rect', c0: number, r0: number, c1: number, r1: number, erase: boolean }
     | { kind: 'object', index: number, dx: number, dy: number }
+    // select tool rubber band; `inside` = started on a map cell (a click outside clears the selection)
+    | { kind: 'area', c0: number, r0: number, c1: number, r1: number, mode: 'set' | 'add' | 'remove', moved: boolean, inside: boolean }
+    // move tool: dragging tab.floating, last pointer cell
+    | { kind: 'block', c: number, r: number }
 let drag: Drag | null = null
 // one undo step per gesture, taken lazily so clicks that change nothing don't pollute history
 let checkpointed = false
@@ -45,6 +53,10 @@ const map = () => props.tab.map
 const cs = () => props.tab.map.cellSize
 
 const colliderBoxes = computed(() => mergeColliders(props.tab.map, props.prefabs))
+const selBounds = computed(() => {
+    const f = props.tab.floating
+    return f ? { col: f.x, row: f.y, cols: f.cols, rows: f.rows } : maskBounds(props.tab.map, props.tab.tileSel)
+})
 const legends = computed(() => {
     try { return layerLegends(props.tab.map) }
     catch { return [] }
@@ -58,6 +70,8 @@ const looks = computed(() => new Map(Object.entries(props.prefabs).map(([name, p
 const textures = new Map<string, HTMLImageElement | null>()
 const blobUrls: string[] = []
 let unmounted = false
+// bumped when an image finishes loading, so sprite collider sizes recompute
+const texturesLoaded = ref(0)
 
 function texture(key: string): HTMLImageElement | null {
     if (textures.has(key)) return textures.get(key) ?? null
@@ -68,12 +82,21 @@ function texture(key: string): HTMLImageElement | null {
         const img = new Image()
         img.onload = () => {
             textures.set(key, img)
+            texturesLoaded.value++
             schedule()
         }
         img.src = url
     })
     return null
 }
+
+const colliderSpecs = computed(() => {
+    void texturesLoaded.value
+    return colliderShapes(props.tab.map, props.prefabs, (key) => {
+        const img = texture(key)
+        return img ? { w: img.naturalWidth, h: img.naturalHeight } : null
+    })
+})
 
 // ---- drawing ----
 let frame = 0
@@ -91,7 +114,7 @@ function drawTile(ctx: CanvasRenderingContext2D, name: string, x: number, y: num
         ctx.fillRect(x, y, w, h)
         return
     }
-    const img = look.key ? texture(look.key) : null
+    const img = look.key && props.tab.showTextures ? texture(look.key) : null
     if (img) ctx.drawImage(img, x, y, w, h)
     else {
         ctx.fillStyle = look.color
@@ -119,10 +142,11 @@ function draw() {
     ctx.fillStyle = MAP_BG
     ctx.fillRect(0, 0, W, H)
 
-    // tiles; layers other than the current one are dimmed
+    // tiles; layers other than the current one are dimmed, layers outside a custom/all selection scope more so
+    const scoped = (props.tab.tool === 'select' || props.tab.tool === 'move') && props.tab.selScope !== 'current' ? $tabs.selectedLayers(props.tab) : null
     m.layers.forEach((layer, li) => {
         if (!layer.visible) return
-        ctx.globalAlpha = li === props.tab.layer ? 1 : OTHER_LAYER_ALPHA
+        ctx.globalAlpha = scoped && !scoped.includes(li) ? OUT_OF_SCOPE_ALPHA : li === props.tab.layer ? 1 : OTHER_LAYER_ALPHA
         for (let r = 0; r < m.rows; r++)
             for (let c = 0; c < m.cols; c++) {
                 const name = layer.cells[r * m.cols + c]
@@ -151,6 +175,19 @@ function draw() {
             }
     }
 
+    // lifted / pasted tiles follow the move tool until dropped
+    const f = props.tab.floating
+    if (f) {
+        ctx.globalAlpha = 0.8
+        for (const cells of Object.values(f.layers))
+            for (let r = 0; r < f.rows; r++)
+                for (let c = 0; c < f.cols; c++) {
+                    const name = f.mask[r * f.cols + c] ? cells[r * f.cols + c] : null
+                    if (name) drawTile(ctx, name, (f.x + c) * cw, (f.y + r) * ch, cw, ch)
+                }
+        ctx.globalAlpha = 1
+    }
+
     if (props.tab.showGrid) {
         ctx.beginPath()
         for (let c = 0; c <= m.cols; c++) { ctx.moveTo(c * cw, 0); ctx.lineTo(c * cw, H) }
@@ -171,6 +208,15 @@ function draw() {
             ctx.fillRect(b.col * cw, b.row * ch, b.width * cw, b.height * ch)
             ctx.strokeRect(b.col * cw + px, b.row * ch + px, b.width * cw - 2 * px, b.height * ch - 2 * px)
         }
+        // per-entity box/sprite colliders; triggers dashed teal so they don't read as walls
+        for (const s of colliderSpecs.value) {
+            ctx.fillStyle = s.trigger ? `rgba(${TRIGGER},.08)` : 'rgba(255,92,122,.12)'
+            ctx.strokeStyle = s.trigger ? `rgba(${TRIGGER},.9)` : 'rgba(255,92,122,.85)'
+            ctx.setLineDash(s.trigger ? [5 * px, 3 * px] : [])
+            ctx.fillRect(s.x, s.y, s.w, s.h)
+            ctx.strokeRect(s.x + px, s.y + px, s.w - 2 * px, s.h - 2 * px)
+        }
+        ctx.setLineDash([])
     }
 
     if (props.tab.showObjects) {
@@ -180,7 +226,7 @@ function draw() {
             const y = (o.position?.y ?? 0) + ch / 2
             const selected = props.tab.selection.kind === 'object' && props.tab.selection.index === i
             const look = o.prefab ? looks.value.get(o.prefab) : undefined
-            const img = look?.key ? texture(look.key) : null
+            const img = look?.key && props.tab.showTextures ? texture(look.key) : null
             if (img) ctx.drawImage(img, x - cw / 2, y - ch / 2, cw, ch)
 
             ctx.beginPath()
@@ -188,7 +234,7 @@ function draw() {
             ctx.fillStyle = look?.color ?? '#ff00ff'
             ctx.fill()
             ctx.lineWidth = (selected ? 3 : 1.5) * px
-            ctx.strokeStyle = selected ? props.highlight : '#ffffff'
+            ctx.strokeStyle = selected ? highlight.value : '#ffffff'
             ctx.stroke()
             if (selected) {
                 const halo = rad + 5 * px
@@ -206,17 +252,48 @@ function draw() {
             const tw = ctx.measureText(label).width + 8 * px
             ctx.fillStyle = 'rgba(0,0,0,.7)'
             ctx.fillRect(x - tw / 2, y + rad + 3 * px, tw, 15 * px)
-            ctx.fillStyle = selected ? props.highlight : '#dddddd'
+            ctx.fillStyle = selected ? highlight.value : '#dddddd'
             ctx.fillText(label, x, y + rad + 5 * px)
         })
     }
 
-    ctx.strokeStyle = props.highlight
-    if (drag?.kind === 'rect') {
-        const { c0, r0, c1, r1, erase } = drag
+    // tile selection (or the floating block): faint fill + two-tone dashed outer edges
+    const b = selBounds.value
+    if (b) {
+        const mask = props.tab.tileSel
+        const on = f
+            ? (c: number, r: number) => c >= f.x && r >= f.y && c < f.x + f.cols && r < f.y + f.rows && !!f.mask[(r - f.y) * f.cols + c - f.x]
+            : (c: number, r: number) => inBounds(m, c, r) && !!mask![r * m.cols + c]
+        ctx.beginPath()
+        ctx.globalAlpha = 0.12
+        ctx.fillStyle = highlight.value
+        for (let r = b.row; r < b.row + b.rows; r++)
+            for (let c = b.col; c < b.col + b.cols; c++) {
+                if (!on(c, r)) continue
+                const x = c * cw
+                const y = r * ch
+                ctx.fillRect(x, y, cw, ch)
+                if (!on(c, r - 1)) { ctx.moveTo(x, y); ctx.lineTo(x + cw, y) }
+                if (!on(c, r + 1)) { ctx.moveTo(x, y + ch); ctx.lineTo(x + cw, y + ch) }
+                if (!on(c - 1, r)) { ctx.moveTo(x, y); ctx.lineTo(x, y + ch) }
+                if (!on(c + 1, r)) { ctx.moveTo(x + cw, y); ctx.lineTo(x + cw, y + ch) }
+            }
+        ctx.globalAlpha = 1
+        ctx.lineWidth = 2 * px
+        ctx.strokeStyle = 'rgba(0,0,0,.7)'
+        ctx.stroke()
+        ctx.setLineDash([4 * px, 4 * px])
+        ctx.strokeStyle = highlight.value
+        ctx.stroke()
+        ctx.setLineDash([])
+    }
+
+    ctx.strokeStyle = highlight.value
+    if (drag?.kind === 'rect' || drag?.kind === 'area') {
+        const { c0, r0, c1, r1 } = drag
         ctx.setLineDash([6 * px, 4 * px])
         ctx.lineWidth = 2 * px
-        ctx.strokeStyle = erase ? '#ff6b6b' : props.highlight
+        ctx.strokeStyle = (drag.kind === 'rect' ? drag.erase : drag.mode === 'remove') ? '#ff6b6b' : highlight.value
         ctx.strokeRect(Math.min(c0, c1) * cw + px, Math.min(r0, r1) * ch + px, (Math.abs(c1 - c0) + 1) * cw - 2 * px, (Math.abs(r1 - r0) + 1) * ch - 2 * px)
         ctx.setLineDash([])
     }
@@ -225,13 +302,23 @@ function draw() {
         ctx.strokeRect(hoverCell.value.c * cw + px, hoverCell.value.r * ch + px, cw - 2 * px, ch - 2 * px)
     }
     const sel = props.tab.selection
-    if (sel.kind === 'cell' && inBounds(m, sel.col, sel.row)) {
+    if (sel.kind === 'cell' && inBounds(m, sel.col, sel.row) && !props.tab.tileSel?.[cellIndex(m, sel.col, sel.row)]) {
         ctx.setLineDash([4 * px, 3 * px])
         ctx.lineWidth = 2 * px
-        ctx.strokeStyle = props.highlight
+        ctx.strokeStyle = highlight.value
         ctx.strokeRect(sel.col * cw + px, sel.row * ch + px, cw - 2 * px, ch - 2 * px)
         ctx.setLineDash([])
     }
+
+    // rulers last, in screen space; a live rubber band shows its extents instead of the current selection
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    const a = drag?.kind === 'area' ? drag : null
+    drawRulers(ctx, {
+        width: size.w, height: size.h, zoom: z, pan, cellSize: m.cellSize, cols: m.cols, rows: m.rows,
+        selection: a ? { col: Math.min(a.c0, a.c1), row: Math.min(a.r0, a.r1), cols: Math.abs(a.c1 - a.c0) + 1, rows: Math.abs(a.r1 - a.r0) + 1 } : b,
+        hover: hoverCell.value,
+        colors: { bg: '#24262b', tick: 'rgba(255,255,255,.25)', text: 'rgba(255,255,255,.6)', accent: highlight.value },
+    })
 }
 
 // ---- camera ----
@@ -253,11 +340,14 @@ watch(() => props.tab.zoom, (to, from) => {
     schedule()
 })
 
+// leaves the ruler strips (top/left) out of the fitted area
 function fit() {
     const { x: cw, y: ch } = cs()
-    const z = Math.min(8, Math.max(0.1, Math.min((size.w - 96) / (map().cols * cw), (size.h - 96) / (map().rows * ch))))
-    pan.x = (size.w - map().cols * cw * z) / 2
-    pan.y = (size.h - map().rows * ch * z) / 2
+    const w = size.w - RULER
+    const h = size.h - RULER
+    const z = Math.min(8, Math.max(0.1, Math.min((w - 96) / (map().cols * cw), (h - 96) / (map().rows * ch))))
+    pan.x = RULER + (w - map().cols * cw * z) / 2
+    pan.y = RULER + (h - map().rows * ch * z) / 2
     appliedZoom = z
     props.tab.zoom = z
 }
@@ -284,6 +374,8 @@ function local(e: MouseEvent): Vec2 {
 }
 const toWorld = (p: Vec2): Vec2 => ({ x: (p.x - pan.x) / props.tab.zoom, y: (p.y - pan.y) / props.tab.zoom })
 const cellOf = (w: Vec2) => ({ c: Math.floor(w.x / cs().x), r: Math.floor(w.y / cs().y) })
+const clampCol = (c: number) => Math.max(0, Math.min(map().cols - 1, c))
+const clampRow = (r: number) => Math.max(0, Math.min(map().rows - 1, r))
 
 function hitObject(w: Vec2): number {
     if (!props.tab.showObjects) return -1
@@ -335,10 +427,13 @@ function placeObject(c: number, r: number) {
     props.tab.selection = { kind: 'object', index: map().objects.length - 1 }
 }
 
+const onRuler = (p: Vec2) => p.x < RULER || p.y < RULER
+
 function onPointerDown(e: PointerEvent) {
+    const p = local(e)
+    if (onRuler(p)) return
     canvas.value!.setPointerCapture(e.pointerId)
     checkpointed = false
-    const p = local(e)
     const w = toWorld(p)
     const { c, r } = cellOf(w)
     const tool = props.tab.tool
@@ -348,9 +443,22 @@ function onPointerDown(e: PointerEvent) {
         return
     }
 
+    // move tool: drag the floating block, or lift the selection when grabbing one of its cells
+    if (tool === 'move') {
+        if (e.button !== 0) return
+        const f = props.tab.floating
+        const sel = props.tab.tileSel
+        const grab = f
+            ? c >= f.x && r >= f.y && c < f.x + f.cols && r < f.y + f.rows
+            : inBounds(map(), c, r) && sel?.length === map().cols * map().rows && !!sel[cellIndex(map(), c, r)]
+        if (grab) drag = { kind: 'block', c, r }
+        return
+    }
+
     // select and object tools: clicking an existing object selects/drags it; object tool places on empty space
     if (tool === 'select' || tool === 'object') {
         if (e.button !== 0) return
+        if (tool === 'select') $tabs.dropFloating(props.tab)
         const hit = hitObject(w)
         if (hit >= 0) {
             const pos = map().objects[hit]!.position ?? { x: 0, y: 0 }
@@ -358,7 +466,12 @@ function onPointerDown(e: PointerEvent) {
             drag = { kind: 'object', index: hit, dx: w.x - pos.x, dy: w.y - pos.y }
         }
         else if (tool === 'object') placeObject(c, r)
-        else props.tab.selection = inBounds(map(), c, r) ? { kind: 'cell', col: c, row: r } : { kind: 'map' }
+        else {
+            const mode = e.ctrlKey || e.metaKey ? 'remove' : e.shiftKey ? 'add' : 'set'
+            const cc = clampCol(c)
+            const rr = clampRow(r)
+            drag = { kind: 'area', c0: cc, r0: rr, c1: cc, r1: rr, mode, moved: false, inside: inBounds(map(), c, r) }
+        }
         schedule()
         return
     }
@@ -381,7 +494,7 @@ function onPointerMove(e: PointerEvent) {
     const p = local(e)
     const w = toWorld(p)
     const cell = cellOf(w)
-    hoverCell.value = inBounds(map(), cell.c, cell.r) ? cell : null
+    hoverCell.value = inBounds(map(), cell.c, cell.r) && (drag || !onRuler(p)) ? cell : null
     hoverWorld.value = { x: Math.round(w.x), y: Math.round(w.y) }
 
     if (drag?.kind === 'pan') {
@@ -395,8 +508,24 @@ function onPointerMove(e: PointerEvent) {
         drag.last = w
     }
     else if (drag?.kind === 'rect') {
-        drag.c1 = Math.max(0, Math.min(map().cols - 1, cell.c))
-        drag.r1 = Math.max(0, Math.min(map().rows - 1, cell.r))
+        drag.c1 = clampCol(cell.c)
+        drag.r1 = clampRow(cell.r)
+    }
+    else if (drag?.kind === 'area') {
+        drag.c1 = clampCol(cell.c)
+        drag.r1 = clampRow(cell.r)
+        drag.moved ||= drag.c1 !== drag.c0 || drag.r1 !== drag.r0
+    }
+    else if (drag?.kind === 'block') {
+        const dc = cell.c - drag.c
+        const dr = cell.r - drag.r
+        // lift lazily, so a click on the selection without moving changes nothing
+        if ((dc || dr) && (props.tab.floating || $tabs.liftTiles(props.tab))) {
+            props.tab.floating!.x += dc
+            props.tab.floating!.y += dr
+            drag.c = cell.c
+            drag.r = cell.r
+        }
     }
     else if (drag?.kind === 'object') {
         const o = map().objects[drag.index]
@@ -421,6 +550,22 @@ function onPointerUp() {
             fillRect(map(), layer, drag.c0, drag.r0, drag.c1, drag.r1, drag.erase ? null : props.tab.prefab)
         }
     }
+    else if (drag?.kind === 'area') {
+        const { c0, r0, c1, r1, mode } = drag
+        if (!drag.moved && !drag.inside) {
+            // click outside the map: plain click clears, modified clicks change nothing
+            if (mode === 'set') {
+                props.tab.tileSel = null
+                props.tab.selection = { kind: 'map' }
+            }
+        }
+        else {
+            const mask = maskRect(map(), mode === 'set' ? null : props.tab.tileSel, c0, r0, c1, r1, mode === 'remove' ? 0 : 1)
+            props.tab.tileSel = mask.some(Boolean) ? mask : null
+            if (!drag.moved) props.tab.selection = { kind: 'cell', col: c0, row: r0 }
+        }
+    }
+    else if (drag?.kind === 'block') $tabs.dropFloating(props.tab)
     drag = null
     schedule()
 }
@@ -443,7 +588,8 @@ function onWheel(e: WheelEvent) {
 
 // right-click: object menu in select/object tools, erase in paint tools (handled on pointerdown)
 function onContextMenu(e: MouseEvent) {
-    const hit = props.tab.tool === 'select' || props.tab.tool === 'object' ? hitObject(toWorld(local(e))) : -1
+    const p = local(e)
+    const hit = !onRuler(p) && (props.tab.tool === 'select' || props.tab.tool === 'object') ? hitObject(toWorld(p)) : -1
     contextTarget.value = hit >= 0 ? hit : null
     if (hit >= 0) props.tab.selection = { kind: 'object', index: hit }
     else e.preventDefault()
@@ -467,9 +613,17 @@ function deleteObject(index: number) {
 }
 
 defineShortcuts({
-    delete: () => props.tab.selection.kind === 'object' && deleteObject(props.tab.selection.index),
-    backspace: () => props.tab.selection.kind === 'object' && deleteObject(props.tab.selection.index),
+    escape: () => {
+        if (props.tab.tool !== 'select' && props.tab.tool !== 'move') return
+        if (props.tab.floating) $tabs.cancelFloating(props.tab)
+        else props.tab.tileSel = null
+    },
+    enter: () => $tabs.dropFloating(props.tab),
 })
+
+// floating tiles land when the user moves on to another tool or layer (paste switches *to* move, so keep those)
+watch(() => props.tab.tool, tool => tool !== 'move' && $tabs.dropFloating(props.tab))
+watch(() => props.tab.layer, () => $tabs.dropFloating(props.tab))
 
 const contextItems = computed<ContextMenuItem[]>(() => {
     const index = contextTarget.value
@@ -480,10 +634,6 @@ const contextItems = computed<ContextMenuItem[]>(() => {
     ]
 })
 
-const isTyping = () => {
-    const el = document.activeElement
-    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)
-}
 useEventListener(window, 'keydown', (e: KeyboardEvent) => {
     if (e.code !== 'Space' || isTyping()) return
     e.preventDefault()
@@ -493,7 +643,7 @@ useEventListener(window, 'keyup', (e: KeyboardEvent) => {
     if (e.code === 'Space') spaceDown = false
 })
 
-watch(() => [props.tab, props.prefabs, props.highlight, legends.value, colliderBoxes.value, looks.value], schedule, { deep: true })
+watch(() => [props.tab, props.prefabs, highlight.value, legends.value, colliderBoxes.value, colliderSpecs.value, looks.value], schedule, { deep: true })
 
 onBeforeUnmount(() => {
     unmounted = true
@@ -511,7 +661,7 @@ const layerName = computed(() => props.tab.map.layers[props.tab.layer]?.name ?? 
                 <canvas
                     ref="canvas"
                     class="block size-full touch-none select-none"
-                    :style="{ cursor: tab.tool === 'select' ? 'default' : 'crosshair' }"
+                    :style="{ cursor: tab.tool === 'select' ? 'default' : tab.tool === 'move' ? 'move' : 'crosshair' }"
                     @pointerdown="onPointerDown"
                     @pointermove="onPointerMove"
                     @pointerup="onPointerUp"
@@ -531,7 +681,8 @@ const layerName = computed(() => props.tab.map.layers[props.tab.layer]?.name ?? 
             <span> · {{ tab.tool }}</span>
             <span> · layer {{ layerName }}</span>
             <span> · prefab {{ tab.prefab ?? 'none' }}</span>
-            <span> · {{ colliderBoxes.length }} colliders</span>
+            <span> · {{ colliderBoxes.length + colliderSpecs.length }} colliders</span>
+            <span v-if="selBounds"> · {{ selBounds.cols }}×{{ selBounds.rows }} cells · {{ selBounds.cols * tab.map.cellSize.x }}×{{ selBounds.rows * tab.map.cellSize.y }} px</span>
         </div>
     </div>
 </template>

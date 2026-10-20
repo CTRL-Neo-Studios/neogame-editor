@@ -1129,6 +1129,17 @@
             }
           ],
           "default": ""
+        },
+        "folder": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": ""
         }
       },
       "additionalProperties": false

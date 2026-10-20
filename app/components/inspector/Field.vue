@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { JsonObject, JsonValue, NeoEntry, NeoSchemaFile } from '#shared/types/neo'
+import {useProject} from "~/composables/project/useProject.ts";
 
 const props = defineProps<{
     info: FieldInfo
@@ -10,6 +11,8 @@ const props = defineProps<{
     overridden?: boolean
     /** the shown value is the default/prefab value, not set explicitly */
     inherited?: boolean
+    /** the value names maps (world actions' `world` / `unload[]`) */
+    world?: boolean
 }>()
 const emit = defineEmits<{
     /** undefined clears an optional value back to its default */
@@ -78,12 +81,60 @@ function setFromNull() {
     const blank = blankValue(props.info)
     emit('update:modelValue', blank === null ? blankValue({ ...props.info, default: undefined }) : blank)
 }
+
+// ---- world fields: map names, checked against the project's maps (code-registered worlds are fine too) ----
+const project = useProject()
+const worldNames = computed(() => !props.world ? [] : field.value.kind === 'strings' ? strings.value : typeof value.value === 'string' && value.value ? [value.value] : [])
+const worldError = computed(() => {
+    for (const name of worldNames.value) {
+        const error = pathNameError(name)
+        if (error) return worldNames.value.length > 1 ? `'${name}': ${error}` : error
+    }
+    return null
+})
+const unknownWorlds = computed(() => worldNames.value.filter(n => !project.state.value?.maps.includes(n)))
+
+// ---- Texture2D preview: resolve the Content path the same way the canvas does ----
+const texturePath = computed(() => field.value.kind === 'string' && field.value.asset === 'Texture2D' && typeof value.value === 'string'
+    ? value.value.trim()
+    : '')
+const preview = ref<{ url: string | null, missing: boolean, size: string }>({ url: null, missing: false, size: '' })
+
+function revokePreview() {
+    if (preview.value.url) URL.revokeObjectURL(preview.value.url)
+    preview.value = { url: null, missing: false, size: '' }
+}
+
+watch(texturePath, (path, _, onCleanup) => {
+    revokePreview()
+    if (!path) return
+    let stale = false
+    // debounced: the path is typed one character at a time
+    const timer = setTimeout(async () => {
+        const url = await project.assetUrl(path)
+        if (stale) {
+            if (url) URL.revokeObjectURL(url)
+            return
+        }
+        preview.value = { url, missing: !url, size: '' }
+    }, 200)
+    onCleanup(() => {
+        stale = true
+        clearTimeout(timer)
+    })
+}, { immediate: true })
+onBeforeUnmount(revokePreview)
+
+function onPreviewLoad(e: Event) {
+    const img = e.target as HTMLImageElement
+    preview.value.size = `${img.naturalWidth}×${img.naturalHeight}`
+}
 </script>
 
 <template>
     <UFormField
         :required="info.required"
-        :error="missing ? 'Required' : false"
+        :error="missing ? 'Required' : worldError ?? false"
         :help="field.kind === 'unknown' ? 'No editor for this type; edit the JSON file directly.' : undefined"
         size="sm"
         class="border-s-2 ps-2"
@@ -93,6 +144,9 @@ function setFromNull() {
             <UTooltip :text="tooltip">
                 <span>{{ info.name }}</span>
             </UTooltip>
+        </template>
+        <template v-if="unknownWorlds.length" #help>
+            <span class="text-warning">no map named {{ unknownWorlds.map(n => `'${n}'`).join(', ') }} (ok if registered in code)</span>
         </template>
         <template #hint>
             <span class="flex items-center gap-1">
@@ -118,14 +172,44 @@ function setFromNull() {
             @click="setFromNull"
         />
 
-        <UInput
-            v-else-if="field.kind === 'string'"
-            :model-value="typeof value === 'string' ? value : ''"
-            :icon="field.asset ? 'i-lucide-image' : undefined"
-            :placeholder="isNull ? 'null' : field.asset ? 'Content path, e.g. Sprites/wall' : (info.required ? 'required' : '')"
-            class="w-full"
-            @update:model-value="s => setString(String(s ?? ''))"
-        />
+        <div v-else-if="field.kind === 'string'" class="space-y-1">
+            <UInputMenu
+                v-if="world"
+                mode="autocomplete"
+                :model-value="typeof value === 'string' ? value : ''"
+                :items="project.state.value?.maps ?? []"
+                icon="i-lucide-map"
+                :placeholder="isNull ? 'null' : 'map name, e.g. forest/level1'"
+                class="w-full"
+                @update:model-value="s => setString(String(s ?? ''))"
+            />
+            <UInput
+                v-else
+                :model-value="typeof value === 'string' ? value : ''"
+                :icon="field.asset ? 'i-lucide-image' : undefined"
+                :placeholder="isNull ? 'null' : field.asset ? 'Content path, e.g. Sprites/wall' : (info.required ? 'required' : '')"
+                class="w-full"
+                @update:model-value="s => setString(String(s ?? ''))"
+            />
+            <div v-if="texturePath" class="flex items-center gap-2">
+                <div
+                    class="grid size-16 shrink-0 place-items-center overflow-hidden rounded border border-default"
+                    style="background: repeating-conic-gradient(#3a3d44 0 25%, #2b2d33 0 50%) 0 0 / 8px 8px"
+                >
+                    <img
+                        v-if="preview.url"
+                        :src="preview.url"
+                        :alt="texturePath"
+                        class="size-full object-contain [image-rendering:pixelated]"
+                        @load="onPreviewLoad"
+                    >
+                    <UIcon v-else :name="preview.missing ? 'i-lucide-image-off' : 'i-lucide-loader-circle'" class="size-5 text-muted" :class="!preview.missing && 'animate-spin'" />
+                </div>
+                <span class="min-w-0 text-xs" :class="preview.missing ? 'text-error' : 'text-muted'">
+                    {{ preview.missing ? 'Not found in Content (.png/.jpg/.jpeg/.bmp)' : preview.size || 'Loading…' }}
+                </span>
+            </div>
+        </div>
 
         <UInputNumber
             v-else-if="field.kind === 'number'"
