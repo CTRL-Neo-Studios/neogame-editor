@@ -121,7 +121,9 @@ export function useProject() {
         const s = state.value
         if (!s) return null
         const contentRoot = await join(s.dataDir, s.project.contentRoot ?? '../Content')
-        for (const ext of ['.png', '.jpg', '.jpeg', '.bmp']) {
+        // MonoGame asset names have no extension, but tolerate one typed by hand ("Sprites/door.png")
+        const typed = /\.(png|jpe?g|bmp)$/i.test(assetPath)
+        for (const ext of typed ? [''] : ['.png', '.jpg', '.jpeg', '.bmp']) {
             const file = await join(contentRoot, assetPath + ext)
             if (await exists(file)) return URL.createObjectURL(new Blob([await readFile(file)]))
         }

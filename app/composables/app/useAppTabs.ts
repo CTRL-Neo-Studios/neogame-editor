@@ -32,6 +32,7 @@ export interface MapTab {
     showGrid: boolean
     showColliders: boolean
     showObjects: boolean
+    showTextures: boolean
     zoom: number
 }
 
@@ -81,7 +82,7 @@ export function useAppTabs() {
             const tab: MapTab = {
                 id, kind: 'map', name, map, saved: '', undo: [], redo: [],
                 selection: { kind: 'map' }, tool: 'brush', layer: Math.max(0, map.layers.length - 1), prefab: null,
-                showGrid: true, showColliders: true, showObjects: true, zoom: 1,
+                showGrid: true, showColliders: true, showObjects: true, showTextures: true, zoom: 1,
             }
             tab.saved = serialize(tab)
             tabs.value.push(tab)

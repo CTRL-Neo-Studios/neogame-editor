@@ -57,6 +57,20 @@ defineShortcuts({
     meta_o: () => openProject(),
     meta_w: () => $t.activeId.value && $t.close($t.activeId.value),
 })
+defineShortcuts({
+    meta_s: {
+        usingInput: true,
+        handler: () => saveActive
+    },
+    meta_o: {
+        usingInput: true,
+        handler: () => openProject()
+    },
+    meta_w: {
+        usingInput: true,
+        handler: () => $t.activeId.value && $t.close($t.activeId.value)
+    },
+})
 
 provide('neo:openProject', openProject)
 

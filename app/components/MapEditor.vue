@@ -28,6 +28,7 @@ defineShortcuts({
     o: () => setTool('object'),
     g: () => props.tab.showGrid = !props.tab.showGrid,
     c: () => props.tab.showColliders = !props.tab.showColliders,
+    t: () => props.tab.showTextures = !props.tab.showTextures,
     meta_z: () => $t.undo(props.tab),
     meta_shift_z: () => $t.redo(props.tab),
     meta_y: () => $t.redo(props.tab),
@@ -54,6 +55,9 @@ defineShortcuts({
                 <UButton size="sm" color="neutral" :variant="tab.showGrid ? 'subtle' : 'ghost'" icon="i-lucide-grid-3x3" label="Grid" @click="tab.showGrid = !tab.showGrid" />
                 <UButton size="sm" color="neutral" :variant="tab.showColliders ? 'subtle' : 'ghost'" icon="i-lucide-box-select" label="Colliders" @click="tab.showColliders = !tab.showColliders" />
                 <UButton size="sm" color="neutral" :variant="tab.showObjects ? 'subtle' : 'ghost'" icon="i-lucide-diamond" label="Objects" @click="tab.showObjects = !tab.showObjects" />
+                <UTooltip text="Draw prefab textures; off shows colour swatches" :kbds="['T']">
+                    <UButton size="sm" color="neutral" :variant="tab.showTextures ? 'subtle' : 'ghost'" icon="i-lucide-image" label="Textures" @click="tab.showTextures = !tab.showTextures" />
+                </UTooltip>
                 <USeparator orientation="vertical" class="mx-1 h-5" />
                 <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-undo-2" :disabled="!tab.undo.length" aria-label="Undo" @click="$t.undo(tab)" />
                 <UButton size="sm" color="neutral" variant="ghost" icon="i-lucide-redo-2" :disabled="!tab.redo.length" aria-label="Redo" @click="$t.redo(tab)" />

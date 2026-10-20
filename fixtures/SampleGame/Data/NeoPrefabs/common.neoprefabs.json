@@ -1,21 +1,142 @@
 {
   "prefabs": {
-    "floor": { "specs": [ { "type": "SpriteSpec", "properties": { "texture": "Sprites/floor", "depth": 1 } } ] },
-    "grass": { "specs": [ { "type": "SpriteSpec", "properties": { "texture": "Sprites/grass", "depth": 1 } } ] },
-    "wall": { "tags": [ "solid" ], "collider": "walls", "specs": [ { "type": "SpriteSpec", "properties": { "texture": "Sprites/wall" } } ] },
-    "water": { "collider": "walls", "specs": [ { "type": "SpriteSpec", "properties": { "texture": "Sprites/water", "depth": 0.5 } } ] },
-    "coin": { "tags": [ "pickup" ], "specs": [ { "type": "SpriteSpec", "properties": { "texture": "Sprites/coin" } }, { "type": "CoinSpec", "properties": { "value": 1 } } ] },
-    "door": {
-      "tags": [ "door" ],
+    "floor": {
       "specs": [
-        { "type": "SpriteSpec", "properties": { "texture": "Sprites/door" } },
-        { "type": "TriggerSpec", "id": "exit", "properties": { "size": { "x": 32, "y": 32 }, "tag": "Player", "onEnter": [ { "type": "SwitchWorldAction", "properties": { "world": "level2" } } ] } }
+        {
+          "type": "SpriteSpec",
+          "properties": {
+            "texture": "Sprites/floor",
+            "depth": 1
+          }
+        }
       ]
     },
-    "spawn": { "tags": [ "spawn" ], "specs": [ { "type": "SpawnPointSpec", "properties": { "name": "entry" } } ] },
-    "slime": { "tags": [ "enemy" ], "specs": [ { "type": "SpriteSpec", "properties": { "texture": "Sprites/slime" } }, { "type": "EnemySpec", "properties": { "kind": "slime" } } ] }
+    "grass": {
+      "specs": [
+        {
+          "type": "SpriteSpec",
+          "properties": {
+            "texture": "Sprites/grass",
+            "depth": 1
+          }
+        }
+      ]
+    },
+    "wall": {
+      "tags": [
+        "solid"
+      ],
+      "collider": "walls",
+      "specs": [
+        {
+          "type": "SpriteSpec",
+          "properties": {
+            "texture": "Sprites/wall"
+          }
+        }
+      ]
+    },
+    "water": {
+      "collider": "walls",
+      "specs": [
+        {
+          "type": "SpriteSpec",
+          "properties": {
+            "texture": "Sprites/water",
+            "depth": 0.5
+          }
+        }
+      ]
+    },
+    "coin": {
+      "tags": [
+        "pickup"
+      ],
+      "specs": [
+        {
+          "type": "SpriteSpec",
+          "properties": {
+            "texture": "Sprites/coin"
+          }
+        },
+        {
+          "type": "CoinSpec",
+          "properties": {
+            "value": 1
+          }
+        }
+      ]
+    },
+    "door": {
+      "tags": [
+        "door"
+      ],
+      "specs": [
+        {
+          "type": "SpriteSpec",
+          "properties": {
+            "texture": "Sprites/door"
+          }
+        },
+        {
+          "type": "TriggerSpec",
+          "id": "exit",
+          "properties": {
+            "size": {
+              "x": 32,
+              "y": 32
+            },
+            "tag": "Player",
+            "onEnter": [
+              {
+                "type": "SwitchWorldAction",
+                "properties": {
+                  "world": "level2"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "spawn": {
+      "tags": [
+        "spawn"
+      ],
+      "specs": [
+        {
+          "type": "SpawnPointSpec",
+          "properties": {
+            "name": "entry"
+          }
+        }
+      ]
+    },
+    "slime": {
+      "tags": [
+        "enemy"
+      ],
+      "specs": [
+        {
+          "type": "SpriteSpec",
+          "properties": {
+            "texture": "Sprites/slime"
+          }
+        },
+        {
+          "type": "EnemySpec",
+          "properties": {
+            "kind": "slime"
+          }
+        }
+      ]
+    }
   },
   "colliders": {
-    "walls": { "tags": [ "solid" ] }
+    "walls": {
+      "tags": [
+        "solid"
+      ]
+    }
   }
 }

@@ -91,7 +91,7 @@ function drawTile(ctx: CanvasRenderingContext2D, name: string, x: number, y: num
         ctx.fillRect(x, y, w, h)
         return
     }
-    const img = look.key ? texture(look.key) : null
+    const img = look.key && props.tab.showTextures ? texture(look.key) : null
     if (img) ctx.drawImage(img, x, y, w, h)
     else {
         ctx.fillStyle = look.color
@@ -180,7 +180,7 @@ function draw() {
             const y = (o.position?.y ?? 0) + ch / 2
             const selected = props.tab.selection.kind === 'object' && props.tab.selection.index === i
             const look = o.prefab ? looks.value.get(o.prefab) : undefined
-            const img = look?.key ? texture(look.key) : null
+            const img = look?.key && props.tab.showTextures ? texture(look.key) : null
             if (img) ctx.drawImage(img, x - cw / 2, y - ch / 2, cw, ch)
 
             ctx.beginPath()
