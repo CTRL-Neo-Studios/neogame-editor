@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ContextMenuItem } from '@nuxt/ui'
-import type { NeoMapObjectFile, NeoPrefab, NeoSchemaFile, Vec2 } from '#shared/types/neo'
+import type { NeoColliderGroup, NeoMapObjectFile, NeoPrefab, NeoSchemaFile, Vec2 } from '#shared/types/neo'
 
 // Plain Canvas 2D, same approach as the reference mockup: one draw() renders everything under a single
 // world->screen transform, so selection, hover and previews always follow pan/zoom.
@@ -18,6 +18,8 @@ const MAP_BG = '#1f2126'
 const OTHER_LAYER_ALPHA = 0.6
 const OUT_OF_SCOPE_ALPHA = 0.3
 const TRIGGER = '45,212,191'
+// a collider group's own specs: extra colliders on top of the group's full box, not a replacement for it
+const EXTRA = '251,191,36'
 
 const container = ref<HTMLDivElement>()
 const canvas = ref<HTMLCanvasElement>()
@@ -90,9 +92,18 @@ function texture(key: string): HTMLImageElement | null {
     return null
 }
 
+// collider groups of the map's libraries, in library order (first definition wins, like prefabsOf)
+const colliderGroups = computed(() => {
+    const libs = project.state.value?.libraries ?? {}
+    const out: Record<string, NeoColliderGroup> = {}
+    for (const name of props.tab.map.libraries)
+        for (const [key, group] of Object.entries(libs[name]?.colliders ?? {})) out[key] ??= group
+    return out
+})
+
 const colliderSpecs = computed(() => {
     void texturesLoaded.value
-    return colliderShapes(props.tab.map, props.prefabs, (key) => {
+    return colliderShapes(props.tab.map, props.prefabs, colliderBoxes.value, colliderGroups.value, (key) => {
         const img = texture(key)
         return img ? { w: img.naturalWidth, h: img.naturalHeight } : null
     })
@@ -208,10 +219,11 @@ function draw() {
             ctx.fillRect(b.col * cw, b.row * ch, b.width * cw, b.height * ch)
             ctx.strokeRect(b.col * cw + px, b.row * ch + px, b.width * cw - 2 * px, b.height * ch - 2 * px)
         }
-        // per-entity box/sprite colliders; triggers dashed teal so they don't read as walls
+        // per-entity box/sprite colliders; triggers dashed teal so they don't read as walls, group extras amber
         for (const s of colliderSpecs.value) {
-            ctx.fillStyle = s.trigger ? `rgba(${TRIGGER},.08)` : 'rgba(255,92,122,.12)'
-            ctx.strokeStyle = s.trigger ? `rgba(${TRIGGER},.9)` : 'rgba(255,92,122,.85)'
+            const rgb = s.trigger ? TRIGGER : s.extra ? EXTRA : '255,92,122'
+            ctx.fillStyle = `rgba(${rgb},${s.trigger ? .08 : .12})`
+            ctx.strokeStyle = `rgba(${rgb},${s.trigger ? .9 : .85})`
             ctx.setLineDash(s.trigger ? [5 * px, 3 * px] : [])
             ctx.fillRect(s.x, s.y, s.w, s.h)
             ctx.strokeRect(s.x + px, s.y + px, s.w - 2 * px, s.h - 2 * px)
