@@ -18,6 +18,8 @@ export interface NeoPrefab {
     tags?: string[]
     specs?: NeoEntry[]
     collider?: string
+    /** editor-only grouping, `/`-separated key segments; "" or absent = library root. Not part of the prefab's name. */
+    folder?: string
 }
 
 export interface NeoColliderGroup {
