@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { JsonObject, JsonValue, NeoEntry, NeoSchemaFile } from '#shared/types/neo'
+import { isWorldField } from '~/utils/names'
 
 const props = defineProps<{
     entry: NeoEntry
@@ -135,6 +136,7 @@ function removeUnknown() {
                             :model-value="values[f.name]"
                             :overridden="overrideMode && isOverridden(f.name)"
                             :inherited="overrideMode ? !isOverridden(f.name) : !(f.name in values)"
+                            :world="kind === 'action' && isWorldField(entry.type, f.name)"
                             @update:model-value="v => set(f.name, v)"
                             @reset="setOverride(f.name, undefined)"
                         />

@@ -79,26 +79,40 @@ const libraryOf = computed<Record<string, string>>(() => {
     return out
 })
 
+type PrefabItem = { name: string, def: NeoPrefab }
+
 const prefabGroups = computed(() => {
     const needle = prefabSearch.value.trim().toLowerCase()
-    const byLibrary = new Map<string, { name: string, def: NeoPrefab }[]>()
+    const byLibrary = new Map<string, PrefabItem[]>()
     for (const [name, def] of Object.entries(props.prefabs)) {
-        const hit = !needle || name.toLowerCase().includes(needle) || (def.tags ?? []).some(t => t.toLowerCase().includes(needle))
+        const hit = !needle || name.toLowerCase().includes(needle) || (def.folder ?? '').toLowerCase().includes(needle)
+            || (def.tags ?? []).some(t => t.toLowerCase().includes(needle))
         if (!hit) continue
         const library = libraryOf.value[name] ?? 'other'
         if (!byLibrary.has(library)) byLibrary.set(library, [])
         byLibrary.get(library)!.push({ name, def })
     }
-    const groups: { library: string, items: { name: string, def: NeoPrefab }[] }[] = []
+    // root prefabs first, then one sub-group per folder path
+    const byFolder = (items: PrefabItem[]) => {
+        const out: Record<string, PrefabItem[]> = {}
+        for (const item of items) (out[item.def.folder ?? ''] ??= []).push(item)
+        return Object.keys(out).sort().map(folder => ({ folder, items: out[folder]! }))
+    }
+    const groups: { library: string, folders: { folder: string, items: PrefabItem[] }[] }[] = []
     for (const library of props.tab.map.libraries) {
         const items = byLibrary.get(library)
-        if (items?.length) groups.push({ library, items })
+        if (items?.length) groups.push({ library, folders: byFolder(items) })
         byLibrary.delete(library)
     }
     for (const [library, items] of byLibrary)
-        if (items.length) groups.push({ library, items })
+        if (items.length) groups.push({ library, folders: byFolder(items) })
     return groups
 })
+
+const folderOpen = useLocalStorage<Record<string, boolean>>('neo-sidebar-folders', {})
+// searching shows every hit, whatever is collapsed
+const isFolderOpen = (library: string, folder: string) => !!prefabSearch.value.trim() || (folderOpen.value[`${library}:${folder}`] ?? true)
+const toggleFolder = (library: string, folder: string) => folderOpen.value[`${library}:${folder}`] = !isFolderOpen(library, folder)
 
 const tagsOf = (def: NeoPrefab) => def.tags ?? []
 
@@ -292,22 +306,37 @@ function pickLegend(name: string, layer: number) {
             <template v-else>
                 <div v-for="group in prefabGroups" :key="group.library" class="flex flex-col gap-0.5">
                     <div class="px-1 pt-1 text-[10px] font-medium uppercase tracking-wide text-dimmed">{{ group.library }}</div>
-                    <div
-                        v-for="item in group.items"
-                        :key="item.name"
-                        class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5"
-                        :class="tab.prefab === item.name ? 'bg-elevated ring-primary/50 ring' : 'hover:bg-elevated/50'"
-                        @click="selectPrefab(group.library, item.name)"
-                    >
-                        <img v-if="thumbs[item.name]" :src="thumbOf(item.name)" class="size-4 shrink-0 rounded-sm object-cover" alt="" />
-                        <span v-else class="size-4 shrink-0 rounded-sm" :style="{ background: swatchOf(item.name) }" />
-                        <span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span>
-                        <UBadge v-if="item.def.collider" size="xs" variant="subtle" color="neutral" :label="item.def.collider" />
-                        <template v-if="tagsOf(item.def).length">
-                            <UBadge v-for="tag in tagsOf(item.def).slice(0, 2)" :key="tag" size="xs" variant="soft" color="neutral" :label="tag" />
-                            <UBadge v-if="tagsOf(item.def).length > 2" size="xs" variant="subtle" color="neutral" :label="`+${tagsOf(item.def).length - 2}`" />
-                        </template>
-                    </div>
+                    <template v-for="sub in group.folders" :key="sub.folder">
+                        <button
+                            v-if="sub.folder"
+                            type="button"
+                            class="flex items-center gap-1 rounded-md px-1 py-0.5 text-xs text-muted hover:bg-elevated/50"
+                            @click="toggleFolder(group.library, sub.folder)"
+                        >
+                            <UIcon :name="isFolderOpen(group.library, sub.folder) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="size-3 shrink-0" />
+                            <UIcon :name="isFolderOpen(group.library, sub.folder) ? 'i-lucide-folder-open' : 'i-lucide-folder'" class="size-3.5 shrink-0" />
+                            <span class="min-w-0 flex-1 truncate text-start">{{ sub.folder }}</span>
+                            <span class="tabular-nums text-dimmed">{{ sub.items.length }}</span>
+                        </button>
+                        <div v-if="!sub.folder || isFolderOpen(group.library, sub.folder)" class="flex flex-col gap-0.5" :class="sub.folder && 'ms-2.5 border-s border-default ps-1'">
+                            <div
+                                v-for="item in sub.items"
+                                :key="item.name"
+                                class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5"
+                                :class="tab.prefab === item.name ? 'bg-elevated ring-primary/50 ring' : 'hover:bg-elevated/50'"
+                                @click="selectPrefab(group.library, item.name)"
+                            >
+                                <img v-if="thumbs[item.name]" :src="thumbOf(item.name)" class="size-4 shrink-0 rounded-sm object-cover" alt="" />
+                                <span v-else class="size-4 shrink-0 rounded-sm" :style="{ background: swatchOf(item.name) }" />
+                                <span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span>
+                                <UBadge v-if="item.def.collider" size="xs" variant="subtle" color="neutral" :label="item.def.collider" />
+                                <template v-if="tagsOf(item.def).length">
+                                    <UBadge v-for="tag in tagsOf(item.def).slice(0, 2)" :key="tag" size="xs" variant="soft" color="neutral" :label="tag" />
+                                    <UBadge v-if="tagsOf(item.def).length > 2" size="xs" variant="subtle" color="neutral" :label="`+${tagsOf(item.def).length - 2}`" />
+                                </template>
+                            </div>
+                        </div>
+                    </template>
                 </div>
                 <div v-if="!prefabGroups.length" class="px-1 text-xs text-dimmed">No matching prefabs</div>
             </template>

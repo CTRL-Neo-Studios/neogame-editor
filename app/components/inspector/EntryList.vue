@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import type { NeoEntry, NeoSchemaFile } from '#shared/types/neo'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
     modelValue: NeoEntry[]
     schema: NeoSchemaFile
     kind: 'spec' | 'action'
-}>()
+    /** 'auto' = as many 18rem+ columns as fit, so cards flow into columns as the pane grows */
+    columns?: number | 'auto'
+}>(), { columns: 1 })
 const emit = defineEmits<{ 'update:modelValue': [entries: NeoEntry[]] }>()
 
 const BUILT_IN = {
@@ -22,6 +24,9 @@ const addItems = computed(() => {
         ...group('Game', names.filter(n => !builtIn.has(n))),
     ]
 })
+
+// min(…, 100%): a pane narrower than one column still gets one column instead of overflowing
+const gridColumns = computed(() => props.columns === 'auto' ? 'repeat(auto-fill, minmax(min(18rem, 100%), 1fr))' : `repeat(${props.columns}, minmax(0, 1fr))`)
 
 // writes go through a copy so parents can checkpoint before their data changes (v-model setter = commit point)
 const commit = (next: NeoEntry[]) => emit('update:modelValue', next)
@@ -51,7 +56,8 @@ function move(index: number, dir: -1 | 1) {
 </script>
 
 <template>
-    <div class="flex flex-col gap-2">
+    <!-- items-start: a short card next to a tall one keeps its own height -->
+    <div class="grid items-start gap-2" :style="{ gridTemplateColumns: gridColumns }">
         <InspectorEntryCard
             v-for="(entry, i) in modelValue"
             :key="`${i}:${entry.type}`"
@@ -71,7 +77,7 @@ function move(index: number, dir: -1 | 1) {
             :search-input="{ placeholder: 'Search…' }"
             icon="i-lucide-plus"
             size="sm"
-            class="w-full"
+            class="col-span-full w-full"
             @update:model-value="add"
         />
     </div>

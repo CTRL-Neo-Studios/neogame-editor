@@ -11,6 +11,8 @@ const props = defineProps<{
     overridden?: boolean
     /** the shown value is the default/prefab value, not set explicitly */
     inherited?: boolean
+    /** the value names maps (world actions' `world` / `unload[]`) */
+    world?: boolean
 }>()
 const emit = defineEmits<{
     /** undefined clears an optional value back to its default */
@@ -80,8 +82,19 @@ function setFromNull() {
     emit('update:modelValue', blank === null ? blankValue({ ...props.info, default: undefined }) : blank)
 }
 
-// ---- Texture2D preview: resolve the Content path the same way the canvas does ----
+// ---- world fields: map names, checked against the project's maps (code-registered worlds are fine too) ----
 const project = useProject()
+const worldNames = computed(() => !props.world ? [] : field.value.kind === 'strings' ? strings.value : typeof value.value === 'string' && value.value ? [value.value] : [])
+const worldError = computed(() => {
+    for (const name of worldNames.value) {
+        const error = pathNameError(name)
+        if (error) return worldNames.value.length > 1 ? `'${name}': ${error}` : error
+    }
+    return null
+})
+const unknownWorlds = computed(() => worldNames.value.filter(n => !project.state.value?.maps.includes(n)))
+
+// ---- Texture2D preview: resolve the Content path the same way the canvas does ----
 const texturePath = computed(() => field.value.kind === 'string' && field.value.asset === 'Texture2D' && typeof value.value === 'string'
     ? value.value.trim()
     : '')
@@ -121,7 +134,7 @@ function onPreviewLoad(e: Event) {
 <template>
     <UFormField
         :required="info.required"
-        :error="missing ? 'Required' : false"
+        :error="missing ? 'Required' : worldError ?? false"
         :help="field.kind === 'unknown' ? 'No editor for this type; edit the JSON file directly.' : undefined"
         size="sm"
         class="border-s-2 ps-2"
@@ -131,6 +144,9 @@ function onPreviewLoad(e: Event) {
             <UTooltip :text="tooltip">
                 <span>{{ info.name }}</span>
             </UTooltip>
+        </template>
+        <template v-if="unknownWorlds.length" #help>
+            <span class="text-warning">no map named {{ unknownWorlds.map(n => `'${n}'`).join(', ') }} (ok if registered in code)</span>
         </template>
         <template #hint>
             <span class="flex items-center gap-1">
@@ -157,7 +173,18 @@ function onPreviewLoad(e: Event) {
         />
 
         <div v-else-if="field.kind === 'string'" class="space-y-1">
+            <UInputMenu
+                v-if="world"
+                mode="autocomplete"
+                :model-value="typeof value === 'string' ? value : ''"
+                :items="project.state.value?.maps ?? []"
+                icon="i-lucide-map"
+                :placeholder="isNull ? 'null' : 'map name, e.g. forest/level1'"
+                class="w-full"
+                @update:model-value="s => setString(String(s ?? ''))"
+            />
             <UInput
+                v-else
                 :model-value="typeof value === 'string' ? value : ''"
                 :icon="field.asset ? 'i-lucide-image' : undefined"
                 :placeholder="isNull ? 'null' : field.asset ? 'Content path, e.g. Sprites/wall' : (info.required ? 'required' : '')"
