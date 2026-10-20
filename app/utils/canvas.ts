@@ -1,3 +1,9 @@
+/** Whether keyboard focus is in a text field, so app shortcuts must leave the keys to it. */
+export function isTyping(): boolean {
+    const el = document.activeElement
+    return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || (el as HTMLElement).isContentEditable)
+}
+
 // Small pure helpers shared by MapCanvas.vue.
 
 /** Deterministic fallback color for a prefab while its preview texture is missing/unavailable. */

@@ -64,7 +64,7 @@ interface EntryCheck {
 export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, project: ProjectState): Problem[] {
     // raw objects: toMapFile structuredClones parts of the map, and ajv shouldn't walk reactive proxies
     const map = toRaw(tab.map)
-    const { schema, libraries, libraryErrors } = toRaw(project)
+    const { schema, libraries, libraryErrors, nameErrors, maps } = toRaw(project)
     const out: Problem[] = []
     const push = (level: Problem['level'], message: string, where: string, target?: Selection) => out.push({ level, message, where, target })
     const validate = schema ? validatorsOf(schema) : undefined
@@ -84,6 +84,17 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
             const seg = pointer(e.instancePath)
             push('error', describe(e, seg), loc(file, seg), target(seg))
         }
+    }
+
+    // NeoMap.ApplyEntries keys overrides by id, else type: two entries sharing a key can't be told apart
+    function duplicateKeys(entries: NeoEntry[] | undefined, file: string, seg: string[], target: Selection | undefined) {
+        const seen: Record<string, true> = {}
+        entries?.forEach((entry, i) => {
+            if (!isObject(entry) || typeof entry.type !== 'string') return
+            const key = overrideKey(entry)
+            if (seen[key]) push('error', `two specs share the key '${key}'; give one an \`id\``, loc(file, [...seg, String(i)]), target)
+            seen[key] = true
+        })
     }
 
     function checkEntry(raw: unknown, kind: 'spec' | 'action', file: string, propSeg: string[], target: Selection | undefined, check: EntryCheck, props?: JsonObject) {
@@ -115,6 +126,20 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
             }
         }
 
+        // world names are loaded through NeoProject.DataPath, so they follow the map name rules. Action entries are
+        // only ever checked whole (check.fields is for spec overrides)
+        if (kind === 'action' && WORLD_ACTIONS[entry.type] && isObject(data)) {
+            const worlds: [string[], unknown][] = [[['world'], data.world]]
+            if (entry.type === 'SwitchWorldAction' && Array.isArray(data.unload))
+                data.unload.forEach((u, i) => worlds.push([['unload', String(i)], u]))
+            for (const [seg, world] of worlds) {
+                if (typeof world !== 'string') continue
+                const error = pathNameError(world)
+                if (error) push('error', `${label}: the game can't load world name '${world}': ${error}`, loc(file, [...propSeg, ...seg]), target)
+                else if (!maps.includes(world)) push('warning', `${label}: no map named '${world}' (fine if the game registers this world in code)`, loc(file, [...propSeg, ...seg]), target)
+            }
+        }
+
         if (!isObject(data)) return
         for (const [name, itemKind] of lists) {
             const items = data[name]
@@ -124,6 +149,7 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
     }
 
     if (!schema) push('error', project.schemaError ?? 'game schema not loaded', 'neo.project.json')
+    if (nameErrors.maps[tab.name]) push('error', nameErrors.maps[tab.name]!, tab.name, { kind: 'map' })
     const files = schema?.['x-neo-files']
 
     // libraries: NeoMap.Resolve merges prefabs and colliders and throws on any duplicate key
@@ -140,24 +166,39 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
             push('error', error ? `library '${lib}' failed to load: ${error}` : `library '${lib}' doesn't exist`, loc(tab.name, ['prefabs']), { kind: 'map' })
             continue
         }
+        if (nameErrors.libraries[lib]) push('error', `library '${lib}': ${nameErrors.libraries[lib]}`, loc(tab.name, ['prefabs']), { kind: 'map' })
 
-        for (const name of Object.keys(data.prefabs ?? {})) {
-            if (owner[name]) push('error', `duplicate prefab '${name}' (in '${owner[name]}' and '${lib}')`, loc(lib, ['prefabs', name]), { kind: 'prefab', library: lib, name })
+        for (const [name, prefab] of Object.entries(data.prefabs ?? {})) {
+            const target: Selection = { kind: 'prefab', library: lib, name }
+            if (owner[name]) push('error', `duplicate prefab '${name}' (in '${owner[name]}' and '${lib}')`, loc(lib, ['prefabs', name]), target)
             else owner[name] = lib
+            const keyError = keyNameError(name)
+            if (keyError) push('error', `the game rejects this library: prefab name '${name}': ${keyError}`, loc(lib, ['prefabs', name]), target)
+            const folderErr = typeof prefab?.folder === 'string' ? folderError(prefab.folder) : null
+            if (folderErr) push('error', `the game rejects this library: prefab '${name}' folder '${prefab.folder}': ${folderErr}`, loc(lib, ['prefabs', name, 'folder']), target)
         }
         for (const name of Object.keys(data.colliders ?? {})) {
-            if (colliderOwner[name]) push('error', `duplicate collider group '${name}' (in '${colliderOwner[name]}' and '${lib}')`, loc(lib, ['colliders', name]), { kind: 'collider', library: lib, name })
+            const target: Selection = { kind: 'collider', library: lib, name }
+            if (colliderOwner[name]) push('error', `duplicate collider group '${name}' (in '${colliderOwner[name]}' and '${lib}')`, loc(lib, ['colliders', name]), target)
             else colliderOwner[name] = lib
+            const keyError = keyNameError(name)
+            if (keyError) push('error', `the game rejects this library: collider group name '${name}': ${keyError}`, loc(lib, ['colliders', name]), target)
         }
 
         fileErrors(files?.neoprefabs.$ref, data, lib, (seg) => {
             if (seg[0] === 'prefabs' && seg[1]) return { kind: 'prefab', library: lib, name: seg[1] }
             if (seg[0] === 'colliders' && seg[1]) return { kind: 'collider', library: lib, name: seg[1] }
         })
-        for (const [name, prefab] of Object.entries(data.prefabs ?? {}))
-            prefab.specs?.forEach((entry, i) => checkEntry(entry, 'spec', lib, ['prefabs', name, 'specs', String(i), 'properties'], { kind: 'prefab', library: lib, name }, { required: false }))
-        for (const [name, group] of Object.entries(data.colliders ?? {}))
-            group.specs?.forEach((entry, i) => checkEntry(entry, 'spec', lib, ['colliders', name, 'specs', String(i), 'properties'], { kind: 'collider', library: lib, name }, { required: true }))
+        for (const [name, prefab] of Object.entries(data.prefabs ?? {})) {
+            const target: Selection = { kind: 'prefab', library: lib, name }
+            duplicateKeys(prefab.specs, lib, ['prefabs', name, 'specs'], target)
+            prefab.specs?.forEach((entry, i) => checkEntry(entry, 'spec', lib, ['prefabs', name, 'specs', String(i), 'properties'], target, { required: false }))
+        }
+        for (const [name, group] of Object.entries(data.colliders ?? {})) {
+            const target: Selection = { kind: 'collider', library: lib, name }
+            duplicateKeys(group.specs, lib, ['colliders', name, 'specs'], target)
+            group.specs?.forEach((entry, i) => checkEntry(entry, 'spec', lib, ['colliders', name, 'specs', String(i), 'properties'], target, { required: true }))
+        }
     }
 
     // map file shape. NeoMap's legend is Dictionary<string,string> where null marks empty cells, which the schema types as string
@@ -213,6 +254,7 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
         if (map.cellSize.x > 0 && map.cellSize.y > 0 && (pos.x < 0 || pos.y < 0 || pos.x > width || pos.y > height))
             push('warning', `'${name}' is outside the map (${pos.x}, ${pos.y})`, at('position'), target)
 
+        duplicateKeys(obj.specs, tab.name, ['objects', String(index), 'specs'], target)
         obj.specs?.forEach((entry, i) => checkEntry(entry, 'spec', tab.name, ['objects', String(index), 'specs', String(i), 'properties'], target, { required: true }))
 
         const overrides = obj.overrides ?? {}

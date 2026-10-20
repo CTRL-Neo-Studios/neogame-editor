@@ -159,6 +159,108 @@ export function fillRect(map: EditorMap, layer: EditorLayer, c0: number, r0: num
             layer.cells[r * map.cols + c] = value
 }
 
+// ---- tile selection: one cell mask over the grid, applied to a scope of layers ----
+
+/** Which layers tile-selection operations touch: the active layer, every layer, or the named layers. */
+export type SelScope = 'current' | 'all' | string[]
+
+/** A masked block of cells per layer, positioned at `x,y` (cells): lifted tiles, a paste, or the clipboard. */
+export interface TileBlock {
+    x: number
+    y: number
+    cols: number
+    rows: number
+    /** 1 = the cell belongs to the block; unmasked cells inside the bounds are left untouched on drop */
+    mask: number[]
+    /** `cols * rows` cells per layer name */
+    layers: Record<string, (string | null)[]>
+}
+
+export function scopeLayers(map: EditorMap, scope: SelScope, current: number): number[] {
+    if (scope === 'all') return map.layers.map((_, i) => i)
+    if (scope === 'current') return map.layers[current] ? [current] : []
+    return map.layers.flatMap((layer, i) => scope.includes(layer.name) ? [i] : [])
+}
+
+/** A copy of `mask` (or an empty one when it's missing or sized for another grid) with a rectangle set to `value`. */
+export function maskRect(map: EditorMap, mask: number[] | null, c0: number, r0: number, c1: number, r1: number, value: 0 | 1): number[] {
+    const out = mask?.length === map.cols * map.rows ? [...mask] : Array.from({ length: map.cols * map.rows }, () => 0)
+    for (let r = Math.max(0, Math.min(r0, r1)); r <= Math.min(map.rows - 1, Math.max(r0, r1)); r++)
+        for (let c = Math.max(0, Math.min(c0, c1)); c <= Math.min(map.cols - 1, Math.max(c0, c1)); c++)
+            out[r * map.cols + c] = value
+    return out
+}
+
+/** Bounding box of the set cells, or null when the mask is empty or sized for another grid. */
+export function maskBounds(map: EditorMap, mask: number[] | null): { col: number, row: number, cols: number, rows: number } | null {
+    if (mask?.length !== map.cols * map.rows) return null
+    let c0 = Infinity, r0 = Infinity, c1 = -1, r1 = -1
+    mask.forEach((v, i) => {
+        if (!v) return
+        const c = i % map.cols
+        const r = Math.floor(i / map.cols)
+        c0 = Math.min(c0, c); r0 = Math.min(r0, r); c1 = Math.max(c1, c); r1 = Math.max(r1, r)
+    })
+    return c1 < 0 ? null : { col: c0, row: r0, cols: c1 - c0 + 1, rows: r1 - r0 + 1 }
+}
+
+/** The masked cells of the given layers as a block at the mask's bounds; null when nothing is selected. */
+export function copyBlock(map: EditorMap, mask: number[] | null, layers: number[]): TileBlock | null {
+    const b = maskBounds(map, mask)
+    if (!b || !layers.length) return null
+    const block: TileBlock = { x: b.col, y: b.row, cols: b.cols, rows: b.rows, mask: [], layers: {} }
+    for (let r = 0; r < b.rows; r++)
+        for (let c = 0; c < b.cols; c++) block.mask.push(mask![(b.row + r) * map.cols + b.col + c]!)
+    for (const i of layers) {
+        const layer = map.layers[i]!
+        const cells: (string | null)[] = []
+        for (let r = 0; r < b.rows; r++)
+            for (let c = 0; c < b.cols; c++) cells.push(layer.cells[(b.row + r) * map.cols + b.col + c] ?? null)
+        block.layers[layer.name] = cells
+    }
+    return block
+}
+
+/** Empties the masked cells of the given layers. */
+export function clearMasked(map: EditorMap, mask: number[], layers: number[]) {
+    for (const i of layers) {
+        const cells = map.layers[i]!.cells
+        mask.forEach((v, j) => { if (v) cells[j] = null })
+    }
+}
+
+/**
+ * Writes a block into the map, clipped to its bounds. Each block layer lands on the same-named map layer, else on
+ * `fallback`; returns the block layer names that had no match.
+ */
+export function dropBlock(map: EditorMap, block: TileBlock, fallback: number): string[] {
+    const missing: string[] = []
+    for (const [name, cells] of Object.entries(block.layers)) {
+        let layer = map.layers.find(l => l.name === name)
+        if (!layer) {
+            missing.push(name)
+            layer = map.layers[fallback]
+            if (!layer) continue
+        }
+        for (let r = 0; r < block.rows; r++)
+            for (let c = 0; c < block.cols; c++) {
+                const col = block.x + c
+                const row = block.y + r
+                if (block.mask[r * block.cols + c] && inBounds(map, col, row)) layer.cells[row * map.cols + col] = cells[r * block.cols + c] ?? null
+            }
+    }
+    return missing
+}
+
+/** The grid mask a block covers at its current position, clipped to the map. */
+export function blockMask(map: EditorMap, block: TileBlock): number[] {
+    const out = Array.from({ length: map.cols * map.rows }, () => 0)
+    for (let r = 0; r < block.rows; r++)
+        for (let c = 0; c < block.cols; c++)
+            if (block.mask[r * block.cols + c] && inBounds(map, block.x + c, block.y + r)) out[(block.y + r) * map.cols + block.x + c] = 1
+    return out
+}
+
 export interface ColliderBox { group: string, col: number, row: number, width: number, height: number }
 
 /**
