@@ -8,7 +8,7 @@ export default defineNuxtConfig({
       "@vueuse/nuxt",
       "@nuxt/image",
       "@nuxt/icon",
-      "@nuxt/fonts",
+      "@nuxt/fonts", // comment here
       "@nuxtjs/i18n",
       "@type32/nuxt-cs-utils",
     ],
