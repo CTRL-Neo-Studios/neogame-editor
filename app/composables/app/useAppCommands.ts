@@ -44,6 +44,7 @@ export function useAppCommands() {
     const toast = useToast()
     const { sidebar, inspector, bottom } = usePanels()
     const { running: building, logOpen, build, run: buildRun } = useBuild()
+    const updater = useUpdater()
     const nativeMenu = isTauri() && platform() === 'macos'
 
     async function openProject(path?: string) {
@@ -156,6 +157,7 @@ export function useAppCommands() {
         display('textures', 'Textures', 'showTextures', 't'),
 
         { id: 'about', label: 'About NeoMap Editor', group: 'help', whileTyping: true, run: openAboutWindow },
+        { id: 'updates', label: 'Check for updates…', group: 'help', whileTyping: true, run: () => updater.dialogOpen.value = true, enabled: () => updater.supported },
     ]
 
     useEventListener(window, 'keydown', (e: KeyboardEvent) => {

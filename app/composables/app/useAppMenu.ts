@@ -48,6 +48,7 @@ export function useAppMenu(commands: AppCommand[], nativeMenu: boolean) {
         }
         const quit = commands.find(c => c.id === 'quit')!
         const about = commands.find(c => c.id === 'about')!
+        const updates = commands.find(c => c.id === 'updates')!
         // macOS puts About in the app menu, so the native menu has no Help submenu
         const groups = (Object.keys(GROUPS) as AppCommand['group'][]).filter(g => g !== 'help')
         const submenus = await Promise.all(groups.map(async (group) => {
@@ -76,6 +77,8 @@ export function useAppMenu(commands: AppCommand[], nativeMenu: boolean) {
             items: [
                 // our window (the predefined About item shows the bare system panel)
                 { id: about.id, text: about.label, action: () => about.run() },
+                // macOS convention: Check for Updates sits under About
+                { id: updates.id, text: updates.label, action: () => updates.run() },
                 { item: 'Separator' },
                 { item: 'Hide' },
                 { item: 'HideOthers' },

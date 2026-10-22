@@ -1,0 +1,19 @@
+# Builds and publishes NeoMap Editor through the studio's shared pipeline (CTRL-Neo-Studios/prism).
+# Release = bump "version" in src-tauri/tauri.conf.json and push to main. Unchanged versions build but don't publish.
+# Needs repo secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: CTRL-Neo-Studios/prism/.github/workflows/tauri-release.yml@main
+    with:
+      app: neomap-editor
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
