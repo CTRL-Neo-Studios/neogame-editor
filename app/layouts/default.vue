@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ContextMenuItem } from '@nuxt/ui'
 import { platform } from '@tauri-apps/plugin-os'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
@@ -37,6 +38,28 @@ onMounted(async () => {
 })
 
 provide('neo:openProject', openProject)
+// context menus run the same commands as the menus and keys (paste warns about missing layers, etc.)
+provide('neo:commands', commands)
+
+// production: the webview's own menu (Reload, Inspect) only stays in text fields; our areas open their own menus
+if (!import.meta.dev) useEventListener(window, 'contextmenu', (e: MouseEvent) => {
+    if (!(e.target as Element).closest('input, textarea, [contenteditable="true"], [data-context-menu]')) e.preventDefault()
+})
+
+const tabMenu = useContextTarget<string>((id): ContextMenuItem[][] => {
+    const all = $t.tabs.value.map(t => t.id)
+    const index = id ? all.indexOf(id) : -1
+    if (index < 0) return []
+    return [
+        [{ label: 'Close', icon: 'i-lucide-x', kbds: ['meta', 'w'], onSelect: () => $t.close(id!) }],
+        [
+            { label: 'Close others', disabled: all.length < 2, onSelect: () => $t.close(...all.filter(t => t !== id)) },
+            { label: 'Close to the right', disabled: index === all.length - 1, onSelect: () => $t.close(...all.slice(index + 1)) },
+            { label: 'Close saved', disabled: !$t.tabs.value.some(t => !$t.isDirty(t)), onSelect: () => $t.close(...$t.tabs.value.filter(t => !$t.isDirty(t)).map(t => t.id)) },
+            { label: 'Close all', onSelect: () => $t.close(...all) },
+        ],
+    ]
+})
 
 const tabItems = computed(() => $t.tabs.value.map(t => ({
     id: t.id,
@@ -70,34 +93,37 @@ function selectTab(id: string) {
                 </UDropdownMenu>
             </template>
             <USeparator orientation="vertical" class="mx-1 h-5" />
-            <div class="flex min-w-0 flex-1 items-center gap-0.5 self-stretch overflow-x-auto" data-tauri-drag-region>
-                <div
-                    v-for="item in tabItems"
-                    :key="item.id"
-                    class="group flex shrink-0 items-center rounded-md"
-                    :class="item.id === $t.activeId.value ? 'bg-elevated' : 'hover:bg-elevated/50'"
-                >
-                    <UButton
-                        variant="link"
-                        color="neutral"
-                        size="sm"
-                        :icon="item.icon"
-                        :label="item.label"
-                        class="pe-1"
-                        :class="item.id === $t.activeId.value ? 'text-highlighted' : 'text-muted'"
-                        @click="selectTab(item.id)"
-                    />
-                    <UButton
-                        variant="link"
-                        color="neutral"
-                        size="xs"
-                        :icon="item.dirty ? 'i-lucide-circle' : 'i-lucide-x'"
-                        :class="item.dirty ? 'text-warning' : 'opacity-0 group-hover:opacity-100'"
-                        :aria-label="`Close ${item.label}`"
-                        @click="$t.close(item.id)"
-                    />
+            <UContextMenu :items="tabMenu.items" :content="tabMenu.content">
+                <div class="flex min-w-0 flex-1 items-center gap-0.5 self-stretch overflow-x-auto" data-tauri-drag-region data-context-menu @contextmenu.capture="tabMenu.reset" @contextmenu="tabMenu.settle">
+                    <div
+                        v-for="item in tabItems"
+                        :key="item.id"
+                        class="group flex shrink-0 items-center rounded-md"
+                        :class="item.id === $t.activeId.value ? 'bg-elevated' : 'hover:bg-elevated/50'"
+                        @contextmenu="tabMenu.set(item.id)"
+                    >
+                        <UButton
+                            variant="link"
+                            color="neutral"
+                            size="sm"
+                            :icon="item.icon"
+                            :label="item.label"
+                            class="pe-1"
+                            :class="item.id === $t.activeId.value ? 'text-highlighted' : 'text-muted'"
+                            @click="selectTab(item.id)"
+                        />
+                        <UButton
+                            variant="link"
+                            color="neutral"
+                            size="xs"
+                            :icon="item.dirty ? 'i-lucide-circle' : 'i-lucide-x'"
+                            :class="item.dirty ? 'text-warning' : 'opacity-0 group-hover:opacity-100'"
+                            :aria-label="`Close ${item.label}`"
+                            @click="$t.close(item.id)"
+                        />
+                    </div>
                 </div>
-            </div>
+            </UContextMenu>
             <UTooltip text="Save (Ctrl+S)">
                 <UButton
                     variant="ghost"

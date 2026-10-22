@@ -93,12 +93,7 @@ export function useAppCommands() {
 
     function remove() {
         const tab = mapTab()!
-        if ($t.deleteTiles(tab) || tab.selection.kind !== 'object') return
-        const index = tab.selection.index
-        if (!tab.map.objects[index]) return
-        $t.checkpoint(tab)
-        tab.map.objects.splice(index, 1)
-        tab.selection = { kind: 'map' }
+        if (!$t.deleteTiles(tab) && tab.selection.kind === 'object') $t.deleteObject(tab, tab.selection.index)
     }
 
     const display = (id: string, label: string, key: 'showGrid' | 'showColliders' | 'showObjects' | 'showTextures', kbd?: string, separator?: true): AppCommand => ({
