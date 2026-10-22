@@ -4,5 +4,5 @@
   "description": "desktop-only plugin permissions",
   "platforms": ["macOS", "windows", "linux"],
   "windows": ["main", "*"],
-  "permissions": ["decorum:allow-show-snap-overlay"]
+  "permissions": ["decorum:allow-show-snap-overlay", "updater:default"]
 }

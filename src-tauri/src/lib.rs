@@ -15,6 +15,8 @@ pub fn run() {
         .plugin(tauri_plugin_os::init());
 
     #[cfg(desktop)] let builder = builder.plugin(tauri_plugin_decorum::init()); // decorum (1/2)
+    // updates come from https://www.ctrl-neo.dev/apps (plugins.updater in tauri.conf.json); desktop only
+    #[cfg(desktop)] let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     builder
         .invoke_handler(tauri::generate_handler![build::dotnet_build])
