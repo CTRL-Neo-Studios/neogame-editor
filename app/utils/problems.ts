@@ -198,12 +198,6 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
             const target: Selection = { kind: 'collider', library: lib, name }
             duplicateKeys(group.specs, lib, ['colliders', name, 'specs'], target)
             group.specs?.forEach((entry, i) => checkEntry(entry, 'spec', lib, ['colliders', name, 'specs', String(i), 'properties'], target, { required: true }))
-            // NeoMap.BuildColliders always gives each merged box a full-size solid collider, then applies the group's specs
-            // to the same object, so a solid BoxColliderSpec here adds a second box instead of shaping the first (no slabs)
-            group.specs?.forEach((entry, i) => {
-                if (entry.type === 'BoxColliderSpec' && entry.properties?.isTrigger !== true)
-                    push('warning', `collider group '${name}' already gets a full-cell box per merged rectangle; its BoxColliderSpec adds a second box, it doesn't replace it. For slab-shaped colliders, put the BoxColliderSpec on the prefab and leave 'collider' empty`, loc(lib, ['colliders', name, 'specs', String(i)]), target)
-            })
         }
     }
 

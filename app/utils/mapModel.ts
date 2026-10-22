@@ -1,4 +1,4 @@
-import type { JsonObject, NeoEntry, NeoMapFile, NeoMapObjectFile, NeoPrefab, Vec2 } from '#shared/types/neo'
+import type { JsonObject, JsonValue, NeoColliderGroup, NeoEntry, NeoMapFile, NeoMapObjectFile, NeoPrefab, Vec2 } from '#shared/types/neo'
 
 // Deep clone that survives Vue reactivity: toRaw() only unwraps the OUTER proxy, and copy-on-write
 // editors (entry lists, overrides) emit containers holding reactive entries inside. JSON round-trips
@@ -261,14 +261,28 @@ export function blockMask(map: EditorMap, block: TileBlock): number[] {
     return out
 }
 
-export interface ColliderBox { group: string, col: number, row: number, width: number, height: number }
+/** Canvas world space: map top-left = (0,0), cell (c,r) center = (c*cw + cw/2, r*ch + ch/2). */
+export interface ColliderShape { x: number, y: number, w: number, h: number, trigger: boolean }
+
+/** One merged run of a collider group's cells, and the boxes the runtime gives the object it builds for it. */
+export interface ColliderBox { group: string, col: number, row: number, width: number, height: number, shapes: ColliderShape[] }
+
+/** A finite JSON number, else `d`. */
+export const num = (v: JsonValue | undefined, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
+/** A JSON `{ x, y }`, missing members defaulting to `d`. */
+export function vec(v: JsonValue | undefined, d: number): Vec2 {
+    const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {}
+    return { x: num(o.x, d), y: num(o.y, d) }
+}
 
 /**
- * The exact greedy merge NeoMap.BuildColliders runs: per collider group, across all layers, take the longest
- * horizontal run of cells, then grow it downward while the rows below match. Uses all layers regardless of
- * editor visibility, since visibility is an editor-only concept.
+ * NeoMap.BuildColliders (NeoGameLib 0.4.1, NEOGAMELIB-PARITY §2): per collider group, across all layers (editor visibility
+ * doesn't matter), take the longest horizontal run of cells, then grow it downward while the rows below match.
+ * The group's BoxColliderSpecs are the shape of ONE cell (none = a full cell). A run only extends along x if every box
+ * is at least a cell wide, along y if every box is at least a cell tall, and each box is stretched over the run:
+ * `(w-1)*cell + size`, centered on the run's center + offset. Other group specs don't change the shape.
  */
-export function mergeColliders(map: EditorMap, prefabs: Record<string, NeoPrefab>): ColliderBox[] {
+export function mergeColliders(map: EditorMap, prefabs: Record<string, NeoPrefab>, groups: Record<string, NeoColliderGroup>): ColliderBox[] {
     const masks = new Map<string, Uint8Array>()
     for (const layer of map.layers) {
         layer.cells.forEach((name, i) => {
@@ -280,23 +294,37 @@ export function mergeColliders(map: EditorMap, prefabs: Record<string, NeoPrefab
         })
     }
 
+    const cw = map.cellSize.x, ch = map.cellSize.y
     const boxes: ColliderBox[] = []
     for (const [group, mask] of masks) {
+        const specs = (groups[group]?.specs ?? []).filter(e => e.type === 'BoxColliderSpec').map((e) => {
+            const p = e.properties ?? {}
+            return { size: vec(p.size, 0), offset: vec(p.offset, 0), trigger: p.isTrigger === true }
+        })
+        const cell = specs.length ? specs : [{ size: { x: cw, y: ch }, offset: { x: 0, y: 0 }, trigger: false }]
+        const mergeX = cell.every(s => s.size.x >= cw), mergeY = cell.every(s => s.size.y >= ch)
+
         const covered = new Uint8Array(mask.length)
         const free = (c: number, r: number) => !covered[r * map.cols + c] && mask[r * map.cols + c]
         for (let r = 0; r < map.rows; r++) {
             for (let c = 0; c < map.cols; c++) {
                 if (!free(c, r)) continue
                 let width = 1
-                while (c + width < map.cols && free(c + width, r)) width++
+                while (mergeX && c + width < map.cols && free(c + width, r)) width++
                 let height = 1
-                grow: while (r + height < map.rows) {
+                grow: while (mergeY && r + height < map.rows) {
                     for (let k = 0; k < width; k++) if (!free(c + k, r + height)) break grow
                     height++
                 }
                 for (let rr = r; rr < r + height; rr++)
                     for (let cc = c; cc < c + width; cc++) covered[rr * map.cols + cc] = 1
-                boxes.push({ group, col: c, row: r, width, height })
+                // midpoint of the first and last cell centers
+                const cx = (c + width / 2) * cw, cy = (r + height / 2) * ch
+                const shapes = cell.map((s) => {
+                    const w = (width - 1) * cw + s.size.x, h = (height - 1) * ch + s.size.y
+                    return { x: cx + s.offset.x - w / 2, y: cy + s.offset.y - h / 2, w, h, trigger: s.trigger }
+                })
+                boxes.push({ group, col: c, row: r, width, height, shapes })
             }
         }
     }

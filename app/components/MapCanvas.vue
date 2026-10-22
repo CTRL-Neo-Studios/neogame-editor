@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { ContextMenuItem } from '@nuxt/ui'
-import type { NeoColliderGroup, NeoMapObjectFile, NeoPrefab, NeoSchemaFile, Vec2 } from '#shared/types/neo'
+import type { NeoMapObjectFile, NeoPrefab, NeoSchemaFile, Vec2 } from '#shared/types/neo'
 
 // Plain Canvas 2D, same approach as the reference mockup: one draw() renders everything under a single
 // world->screen transform, so selection, hover and previews always follow pan/zoom.
@@ -10,6 +10,7 @@ const props = defineProps<{ tab: MapTab, prefabs: Record<string, NeoPrefab>, sch
 const highlight = useLocalStorage('neo-highlight', '#ffffff')
 
 const $tabs = useAppTabs()
+const commands = inject<AppCommand[]>('neo:commands', [])
 const project = useProject()
 const toast = useToast()
 
@@ -17,9 +18,9 @@ const VIEW_BG = '#2b2d33'
 const MAP_BG = '#1f2126'
 const OTHER_LAYER_ALPHA = 0.6
 const OUT_OF_SCOPE_ALPHA = 0.3
-const TRIGGER = '45,212,191'
-// a collider group's own specs: extra colliders on top of the group's full box, not a replacement for it
-const EXTRA = '251,191,36'
+const TRIGGER = 'rgb(45,212,191)'
+// prefab/object colliders (not a group)
+const ENTITY = 'rgb(255,92,122)'
 
 const container = ref<HTMLDivElement>()
 const canvas = ref<HTMLCanvasElement>()
@@ -31,7 +32,7 @@ let spaceDown = false
 
 const hoverCell = ref<{ c: number, r: number } | null>(null)
 const hoverWorld = ref<Vec2 | null>(null)
-const contextTarget = ref<number | null>(null)
+const contextTarget = ref<{ kind: 'object', index: number } | { kind: 'tiles' } | null>(null)
 
 type Drag =
     | { kind: 'pan', x: number, y: number }
@@ -54,7 +55,14 @@ function touch() {
 const map = () => props.tab.map
 const cs = () => props.tab.map.cellSize
 
-const colliderBoxes = computed(() => mergeColliders(props.tab.map, props.prefabs))
+const colliderGroups = computed(() => $tabs.collidersOf(props.tab))
+const colliderBoxes = computed(() => mergeColliders(props.tab.map, props.prefabs, colliderGroups.value))
+const groupColor = computed(() => $tabs.groupColor.value)
+// legend: only the groups this map actually paints, in color order
+const usedGroups = computed(() => {
+    const used = new Set(colliderBoxes.value.map(b => b.group))
+    return Object.keys(colliderGroups.value).filter(g => used.has(g))
+})
 const selBounds = computed(() => {
     const f = props.tab.floating
     return f ? { col: f.x, row: f.y, cols: f.cols, rows: f.rows } : maskBounds(props.tab.map, props.tab.tileSel)
@@ -92,18 +100,9 @@ function texture(key: string): HTMLImageElement | null {
     return null
 }
 
-// collider groups of the map's libraries, in library order (first definition wins, like prefabsOf)
-const colliderGroups = computed(() => {
-    const libs = project.state.value?.libraries ?? {}
-    const out: Record<string, NeoColliderGroup> = {}
-    for (const name of props.tab.map.libraries)
-        for (const [key, group] of Object.entries(libs[name]?.colliders ?? {})) out[key] ??= group
-    return out
-})
-
 const colliderSpecs = computed(() => {
     void texturesLoaded.value
-    return colliderShapes(props.tab.map, props.prefabs, colliderBoxes.value, colliderGroups.value, (key) => {
+    return colliderShapes(props.tab.map, props.prefabs, (key) => {
         const img = texture(key)
         return img ? { w: img.naturalWidth, h: img.naturalHeight } : null
     })
@@ -213,21 +212,19 @@ function draw() {
 
     if (props.tab.showColliders) {
         ctx.lineWidth = 2 * px
-        ctx.fillStyle = 'rgba(255,92,122,.12)'
-        ctx.strokeStyle = 'rgba(255,92,122,.85)'
-        for (const b of colliderBoxes.value) {
-            ctx.fillRect(b.col * cw, b.row * ch, b.width * cw, b.height * ch)
-            ctx.strokeRect(b.col * cw + px, b.row * ch + px, b.width * cw - 2 * px, b.height * ch - 2 * px)
-        }
-        // per-entity box/sprite colliders; triggers dashed teal so they don't read as walls, group extras amber
-        for (const s of colliderSpecs.value) {
-            const rgb = s.trigger ? TRIGGER : s.extra ? EXTRA : '255,92,122'
-            ctx.fillStyle = `rgba(${rgb},${s.trigger ? .08 : .12})`
-            ctx.strokeStyle = `rgba(${rgb},${s.trigger ? .9 : .85})`
+        const box = (s: ColliderShape, color: string) => {
             ctx.setLineDash(s.trigger ? [5 * px, 3 * px] : [])
+            ctx.fillStyle = ctx.strokeStyle = color
+            ctx.globalAlpha = s.trigger ? .08 : .14
             ctx.fillRect(s.x, s.y, s.w, s.h)
+            ctx.globalAlpha = .9
             ctx.strokeRect(s.x + px, s.y + px, s.w - 2 * px, s.h - 2 * px)
         }
+        // group runs in their group's color; triggers dashed teal so they don't read as walls; per-entity colliders red
+        for (const b of colliderBoxes.value)
+            for (const s of b.shapes) box(s, s.trigger ? TRIGGER : groupColor.value[b.group] ?? ENTITY)
+        for (const s of colliderSpecs.value) box(s, s.trigger ? TRIGGER : ENTITY)
+        ctx.globalAlpha = 1
         ctx.setLineDash([])
     }
 
@@ -598,30 +595,19 @@ function onWheel(e: WheelEvent) {
     }
 }
 
-// right-click: object menu in select/object tools, erase in paint tools (handled on pointerdown)
+// right-click: object menu over an object, tile menu over the tile selection (select/move tools); paint tools erase
+// on pointerdown instead, so they get no menu
 function onContextMenu(e: MouseEvent) {
     const p = local(e)
-    const hit = !onRuler(p) && (props.tab.tool === 'select' || props.tab.tool === 'object') ? hitObject(toWorld(p)) : -1
-    contextTarget.value = hit >= 0 ? hit : null
-    if (hit >= 0) props.tab.selection = { kind: 'object', index: hit }
-    else e.preventDefault()
-}
-
-function duplicateObject(index: number) {
-    const source = map().objects[index]
-    if (!source) return
-    $tabs.checkpoint(props.tab)
-    const clone = deepClone(source)
-    clone.name = uniqueObjectName(map(), clone.prefab ?? 'Object')
-    map().objects.splice(index + 1, 0, clone)
-    props.tab.selection = { kind: 'object', index: index + 1 }
-}
-
-function deleteObject(index: number) {
-    if (!map().objects[index]) return
-    $tabs.checkpoint(props.tab)
-    map().objects.splice(index, 1)
-    props.tab.selection = { kind: 'map' }
+    const tool = props.tab.tool
+    const w = toWorld(p)
+    const hit = !onRuler(p) && (tool === 'select' || tool === 'object') ? hitObject(w) : -1
+    if (hit >= 0) {
+        contextTarget.value = { kind: 'object', index: hit }
+        props.tab.selection = { kind: 'object', index: hit }
+    }
+    else contextTarget.value = !onRuler(p) && (tool === 'select' || tool === 'move') ? { kind: 'tiles' } : null
+    if (!contextTarget.value) e.preventDefault()
 }
 
 defineShortcuts({
@@ -637,12 +623,24 @@ defineShortcuts({
 watch(() => props.tab.tool, tool => tool !== 'move' && $tabs.dropFloating(props.tab))
 watch(() => props.tab.layer, () => $tabs.dropFloating(props.tab))
 
-const contextItems = computed<ContextMenuItem[]>(() => {
-    const index = contextTarget.value
-    if (index === null) return []
+const contextItems = computed<ContextMenuItem[][]>(() => {
+    const t = contextTarget.value
+    if (t?.kind === 'object') return [[
+        { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => $tabs.duplicateObject(props.tab, t.index) },
+        { label: 'Delete', icon: 'i-lucide-trash', color: 'error', kbds: ['delete'], onSelect: () => $tabs.deleteObject(props.tab, t.index) },
+    ]]
+    if (t?.kind !== 'tiles') return []
+    const item = (id: string, icon: string): ContextMenuItem => {
+        const cmd = commands.find(c => c.id === id)!
+        return { label: cmd.label, icon, kbds: cmd.kbds, disabled: !(cmd.enabled?.() ?? true), onSelect: () => cmd.run() }
+    }
+    const sel = !!props.tab.tileSel?.some(Boolean) || !!props.tab.floating
     return [
-        { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => duplicateObject(index) },
-        { label: 'Delete', icon: 'i-lucide-trash', color: 'error', onSelect: () => deleteObject(index) },
+        [item('cut', 'i-lucide-scissors'), item('copy', 'i-lucide-copy'), item('paste', 'i-lucide-clipboard-paste'), { ...item('delete', 'i-lucide-trash'), color: 'error' }],
+        [
+            item('selectAll', 'i-lucide-scan'),
+            { label: 'Clear selection', icon: 'i-lucide-x', kbds: ['escape'], disabled: !sel, onSelect: () => props.tab.floating ? $tabs.cancelFloating(props.tab) : props.tab.tileSel = null },
+        ],
     ]
 })
 
@@ -693,8 +691,13 @@ const layerName = computed(() => props.tab.map.layers[props.tab.layer]?.name ?? 
             <span> · {{ tab.tool }}</span>
             <span> · layer {{ layerName }}</span>
             <span> · prefab {{ tab.prefab ?? 'none' }}</span>
-            <span> · {{ colliderBoxes.length + colliderSpecs.length }} colliders</span>
+            <span> · {{ colliderBoxes.reduce((n, b) => n + b.shapes.length, 0) + colliderSpecs.length }} colliders</span>
             <span v-if="selBounds"> · {{ selBounds.cols }}×{{ selBounds.rows }} cells · {{ selBounds.cols * tab.map.cellSize.x }}×{{ selBounds.rows * tab.map.cellSize.y }} px</span>
+            <div v-if="tab.showColliders && usedGroups.length" class="mt-1 flex flex-wrap gap-x-2.5 gap-y-0.5">
+                <span v-for="g in usedGroups" :key="g" class="flex items-center gap-1">
+                    <span class="size-2 rounded-full" :style="{ background: groupColor[g] }" />{{ g }}
+                </span>
+            </div>
         </div>
     </div>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TreeItem } from '@nuxt/ui'
+import type { ContextMenuItem, TreeItem } from '@nuxt/ui'
 import { stringify, useProject } from '~/composables/project/useProject'
 import { type TabKind, useAppTabs } from '~/composables/app/useAppTabs'
 
@@ -58,6 +58,7 @@ function build(prefix: string): Node[] {
             label: splitName(f)[1], path: f, folder: true, children,
             // non-empty folders get UTree's open/closed folder icons
             icon: children.length ? undefined : 'i-lucide-folder',
+            class: dropTarget.value === f ? DROP_CLASS : undefined,
             onSelect: () => current.value = f,
         }
     })
@@ -73,6 +74,11 @@ function build(prefix: string): Node[] {
 }
 const tree = computed(() => build(''))
 const getKey = (n: Node) => n.folder ? n.path + '/' : n.path
+/** the row under a DOM event, by the key its label marker carries */
+const nodeAt = (e: Event): { path: string, folder: boolean } | null => {
+    const key = treeKeyAt(e)
+    return key === null ? null : key.endsWith('/') ? { path: key.slice(0, -1), folder: true } : { path: key, folder: false }
+}
 
 const stored = useLocalStorage<string[]>(`neo-home-expanded-${props.kind}`, [])
 const expanded = computed({
@@ -182,12 +188,13 @@ function newFolder() {
     }
 }
 
-async function moveItem(name: string) {
+/** `into` opens the dialog with that folder picked (a drop); confirming does the move. */
+async function moveItem(name: string, into?: string) {
     const refs = await countRefs([name])
     const dirty = tabsOf([name]).some($t.isDirty)
     const [folder, leaf] = splitName(name)
     form.value = {
-        title: `Rename / move ${text.value.noun}`, confirm: 'Move', folder: folder || ROOT, leaf, folders: folders.value, taken: names.value, self: name,
+        title: `Rename / move ${text.value.noun}`, confirm: 'Move', folder: (into ?? folder) || ROOT, leaf, folders: folders.value, taken: names.value, self: name,
         note: refsNote(refs) + (dirty ? ' Its open tab has unsaved changes; they will be saved first.' : ''),
         submit: async (to) => {
             for (const tab of tabsOf([name])) if ($t.isDirty(tab)) await $t.save(tab)
@@ -198,13 +205,13 @@ async function moveItem(name: string) {
     }
 }
 
-async function moveFolder(from: string) {
+async function moveFolder(from: string, into?: string) {
     const items = itemsIn(from)
     const refs = await countRefs(items)
     const dirty = tabsOf(items).some($t.isDirty)
     const [parent, leaf] = splitName(from)
     form.value = {
-        title: 'Rename / move folder', confirm: 'Move', folder: parent || ROOT, leaf, self: from, taken: folders.value,
+        title: 'Rename / move folder', confirm: 'Move', folder: (into ?? parent) || ROOT, leaf, self: from, taken: folders.value,
         folders: folders.value.filter(f => f !== from && !f.startsWith(from + '/')),
         check: to => to.startsWith(from + '/') ? 'can\'t move a folder into itself' : null,
         note: `${plural(items.length, text.value.noun, text.value.nouns)} move with it. ${refsNote(refs)}`
@@ -257,6 +264,78 @@ function deleteFolder(folder: string) {
         },
     }
 }
+
+// ---- drag a row onto a folder (or the panel's empty space = root): opens the move dialog, nothing moves before confirm ----
+const DROP_CLASS = 'ring-2 ring-primary bg-primary/10 rounded-md'
+const dragged = ref<{ path: string, folder: boolean } | null>(null)
+/** folder the pointer would drop into ('' = root) */
+const dropTarget = ref<string | null>(null)
+
+/** Where a drop at `e` lands: the folder row under it (an item row means its folder), else the root. null = not allowed. */
+function dropFolderAt(e: DragEvent): string | null {
+    const d = dragged.value
+    if (!d) return null
+    const at = nodeAt(e)
+    const to = at ? (at.folder ? at.path : splitName(at.path)[0]) : ''
+    if (splitName(d.path)[0] === to) return null // already there
+    if (d.folder && (to === d.path || to.startsWith(d.path + '/'))) return null // into itself
+    return to
+}
+
+function onDragStart(e: DragEvent) {
+    const at = nodeAt(e)
+    if (!at) return e.preventDefault()
+    dragged.value = at
+    e.dataTransfer!.effectAllowed = 'move'
+    e.dataTransfer!.setData('text/plain', at.path)
+}
+
+function onDragOver(e: DragEvent) {
+    dropTarget.value = dropFolderAt(e)
+    if (dropTarget.value === null) return
+    e.preventDefault()
+    e.dataTransfer!.dropEffect = 'move'
+}
+
+function onDrop(e: DragEvent) {
+    const d = dragged.value
+    const to = dropFolderAt(e)
+    onDragEnd()
+    if (!d || to === null) return
+    attempt('Could not count references', () => d.folder ? moveFolder(d.path, to || ROOT) : moveItem(d.path, to || ROOT))
+}
+
+function onDragEnd() {
+    dragged.value = null
+    dropTarget.value = null
+}
+
+// ---- right-click menus ----
+const menu = useContextTarget<{ path: string, folder: boolean } | 'panel'>((t): ContextMenuItem[][] => {
+    if (!t) return []
+    const inFolder = (folder: string, create: () => void) => () => {
+        current.value = folder
+        create()
+    }
+    const create = (folder: string): ContextMenuItem[] => [
+        { label: `New ${text.value.noun}${folder ? ' here' : ''}`, icon: 'i-lucide-plus', onSelect: inFolder(folder, newItem) },
+        { label: `New folder${folder ? ' inside' : ''}`, icon: 'i-lucide-folder-plus', onSelect: inFolder(folder, newFolder) },
+    ]
+    if (t === 'panel') return [create('')]
+    const move = () => attempt('Could not count references', () => t.folder ? moveFolder(t.path) : moveItem(t.path))
+    if (t.folder) {
+        const n = itemsIn(t.path).length
+        return [create(t.path), [
+            { label: 'Rename / move…', icon: 'i-lucide-pencil', onSelect: move },
+            { label: n ? `Delete folder (move its ${plural(n, text.value.noun, text.value.nouns)} first)` : 'Delete folder', icon: 'i-lucide-trash-2', color: 'error', disabled: n > 0, onSelect: () => deleteFolder(t.path) },
+        ]]
+    }
+    return [
+        [{ label: 'Open', icon: 'i-lucide-square-arrow-out-up-right', disabled: !!props.kind && props.kind === 'library' && !(t.path in s.value.libraries), onSelect: () => open(t.path) }],
+        [{ label: 'Rename / move…', icon: 'i-lucide-pencil', onSelect: move }],
+        [{ label: 'Delete', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => attempt('Could not count references', () => deleteItem(t.path)) }],
+    ]
+})
 </script>
 
 <template>
@@ -271,7 +350,18 @@ function deleteFolder(folder: string) {
             </div>
         </header>
 
-        <div class="flex flex-col gap-2 p-2">
+        <UContextMenu :items="menu.items" :content="menu.content">
+        <div
+            class="flex min-h-24 flex-1 flex-col gap-2 p-2"
+            :class="dropTarget === '' && DROP_CLASS"
+            data-context-menu
+            @contextmenu.capture="menu.reset"
+            @contextmenu="(e: MouseEvent) => { const at = nodeAt(e); menu.set(at ?? 'panel'); menu.settle(e) }"
+            @dragstart="onDragStart"
+            @dragover="onDragOver"
+            @drop.prevent="onDrop"
+            @dragend="onDragEnd"
+        >
             <UInput
                 v-if="names.length"
                 v-model="search"
@@ -298,7 +388,8 @@ function deleteFolder(folder: string) {
                 :ui="{ link: 'cursor-pointer' }"
             >
                 <template #item-label="{ item }">
-                    <span :class="item.error && 'text-error'">{{ item.label }}</span>
+                    <!-- marks the row for drag, drop and right-click -->
+                    <span :data-tree-key="getKey(item)" draggable="true" :class="item.error && 'text-error'">{{ item.label }}</span>
                 </template>
                 <template #item-trailing="{ item, ui }">
                     <UTooltip v-if="item.error" :text="item.error">
@@ -356,6 +447,7 @@ function deleteFolder(folder: string) {
                 variant="naked"
             />
         </div>
+        </UContextMenu>
 
         <UModal v-model:open="formOpen" :title="form?.title" :ui="{ footer: 'justify-end' }">
             <template #body>

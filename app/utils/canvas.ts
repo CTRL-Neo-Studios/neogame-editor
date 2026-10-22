@@ -15,6 +15,19 @@ export function colorOf(name: string | null, textureName: string | null): string
     return `hsl(${hash % 360} 38% 45%)`
 }
 
+/**
+ * One color per collider group, by position in `names`: hues step by the golden angle, so nearby positions are
+ * always far apart on the wheel. Adding a group can shift later groups' colors.
+ */
+export function groupColors(names: string[]): Record<string, string> {
+    return Object.fromEntries(names.map((name, i) => [name, `hsl(${Math.round((i * 137.508 + 350) % 360)} 85% 62%)`]))
+}
+
+/** The `data-tree-key` marker a UTree row's label slot renders, for the row under a DOM event (UTree rows take no listeners). */
+export function treeKeyAt(e: Event): string | null {
+    return (e.target as Element).closest('[role="treeitem"]')?.querySelector('[data-tree-key]')?.getAttribute('data-tree-key') ?? null
+}
+
 /** Every map cell a world-space segment from `a` to `b` passes through (DDA/Bresenham in cell space). */
 export function cellsAlongLine(a: { x: number, y: number }, b: { x: number, y: number }, cell: { x: number, y: number }): { c: number, r: number }[] {
     let c0 = Math.floor(a.x / cell.x)

@@ -1,23 +1,12 @@
-import type { JsonObject, JsonValue, NeoColliderGroup, NeoEntry, NeoPrefab, Vec2 } from '#shared/types/neo'
-import { type ColliderBox, type EditorMap, effectiveProperties } from '~/utils/mapModel'
-
-/** Canvas world space: map top-left = (0,0), cell (c,r) center = (c*cw + cw/2, r*ch + ch/2). */
-/** `extra`: a group spec added on top of the group's own full-size box (NeoMap.BuildColliders adds both). */
-export interface ColliderShape { x: number, y: number, w: number, h: number, trigger: boolean, extra?: boolean }
-
-const num = (v: JsonValue | undefined, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d)
-const vec = (v: JsonValue | undefined, d: number): Vec2 => {
-    const o = v && typeof v === 'object' && !Array.isArray(v) ? v : {}
-    return { x: num(o.x, d), y: num(o.y, d) }
-}
+import type { JsonObject, NeoEntry, NeoPrefab, Vec2 } from '#shared/types/neo'
+import { type ColliderShape, type EditorMap, effectiveProperties, num, vec } from '~/utils/mapModel'
 
 /**
- * Per-entity colliders as the runtime builds them (NEOGAMELIB-PARITY §2). The merged full-cell group boxes themselves
- * are excluded (MapCanvas draws those from mergeColliders); a group's own specs are included. `props` resolves an
- * entry's properties (overrides for objects).
+ * Per-entity colliders as the runtime builds them (NEOGAMELIB-PARITY §2). Collider groups (`prefab.collider`) are
+ * mergeColliders' job. `props` resolves an entry's properties (overrides for objects).
  */
 function pushEntity(out: ColliderShape[], specs: NeoEntry[], props: (e: NeoEntry) => JsonObject,
-    cx: number, cy: number, scale: Vec2, cell: Vec2, textureSize: (key: string) => { w: number, h: number } | null, extra = false) {
+    cx: number, cy: number, scale: Vec2, cell: Vec2, textureSize: (key: string) => { w: number, h: number } | null) {
     const sx = Math.abs(scale.x), sy = Math.abs(scale.y)
     for (const e of specs) {
         if (e.type === 'BoxColliderSpec' || e.type === 'TriggerSpec') {
@@ -25,7 +14,7 @@ function pushEntity(out: ColliderShape[], specs: NeoEntry[], props: (e: NeoEntry
             const size = vec(p.size, 0), off = vec(p.offset, 0)
             const w = size.x * sx, h = size.y * sy
             out.push({ x: cx + off.x * scale.x - w / 2, y: cy + off.y * scale.y - h / 2, w, h,
-                trigger: e.type === 'TriggerSpec' || p.isTrigger === true, extra })
+                trigger: e.type === 'TriggerSpec' || p.isTrigger === true })
         }
         else if (e.type === 'SpriteColliderSpec') {
             const sprite = specs.find(s => s.type === 'SpriteSpec')
@@ -36,17 +25,12 @@ function pushEntity(out: ColliderShape[], specs: NeoEntry[], props: (e: NeoEntry
             const fh = src ? num(src.height, 0) : tex ? tex.h : cell.y
             const anchor = vec(p.anchor, 0.5)
             const w = fw * sx, h = fh * sy
-            out.push({ x: cx - anchor.x * w, y: cy - anchor.y * h, w, h, trigger: false, extra })
+            out.push({ x: cx - anchor.x * w, y: cy - anchor.y * h, w, h, trigger: false })
         }
     }
 }
 
-/**
- * `merged` = mergeColliders output, `groups` = collider groups of the map's libraries. NeoMap.BuildColliders makes one
- * object per merged box, centred on it, gives it the full box collider, then applies the group's specs to that same
- * object: a group BoxColliderSpec {size 16x8, offset y -4} is an extra collider centred on the merged box + offset.
- */
-export function colliderShapes(map: EditorMap, prefabs: Record<string, NeoPrefab>, merged: ColliderBox[], groups: Record<string, NeoColliderGroup>,
+export function colliderShapes(map: EditorMap, prefabs: Record<string, NeoPrefab>,
     textureSize: (key: string) => { w: number, h: number } | null): ColliderShape[] {
     const out: ColliderShape[] = []
     const cw = map.cellSize.x, ch = map.cellSize.y
@@ -62,10 +46,6 @@ export function colliderShapes(map: EditorMap, prefabs: Record<string, NeoPrefab
             const c = i % map.cols, r = (i - c) / map.cols
             pushEntity(out, specs, raw, c * cw + cw / 2, r * ch + ch / 2, one, map.cellSize, textureSize)
         }
-    }
-    for (const b of merged) {
-        const specs = groups[b.group]?.specs
-        if (specs?.length) pushEntity(out, specs, raw, (b.col + b.width / 2) * cw, (b.row + b.height / 2) * ch, one, map.cellSize, textureSize, true)
     }
     for (const o of map.objects) {
         // rotation is ignored: boxes are drawn axis-aligned (unverified against the runtime for rotated objects)
