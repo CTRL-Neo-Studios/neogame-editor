@@ -2,6 +2,8 @@
 import { platform } from '@tauri-apps/plugin-os'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import {useAppCommands} from "~/composables/app/useAppCommands.ts";
+import {useAppMenu} from "~/composables/app/useAppMenu.ts";
 
 const $t = useAppTabs()
 const { commands, nativeMenu, openProject, saveActive } = useAppCommands()
@@ -18,6 +20,21 @@ if (isTauri()) {
         if (!(await $t.confirmDiscard($t.tabs.value))) event.preventDefault()
     })
 }
+
+// one quiet check per launch: a toast only when something newer exists, errors stay silent (offline, no token yet)
+const updater = useUpdater()
+const toast = useToast()
+onMounted(async () => {
+    if (!updater.supported || import.meta.dev) return
+    await updater.loadSettings()
+    const found = await updater.checkNow()
+    if (found) toast.add({
+        title: `NeoMap Editor ${found.version} is available`,
+        icon: 'i-lucide-download',
+        duration: 0,
+        actions: [{ label: 'View', onClick: () => { updater.dialogOpen.value = true } }],
+    })
+})
 
 provide('neo:openProject', openProject)
 
@@ -98,5 +115,6 @@ function selectTab(id: string) {
             <slot />
         </div>
         <BuildLog />
+        <UpdateDialog />
     </div>
 </template>
