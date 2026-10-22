@@ -26,6 +26,12 @@ If you have custom specs you'd like to add to your project schema for use in the
 - Map and library names are file paths: ASCII letters, digits, `_`, `-`, with spaces and dots allowed inside a segment but not at either end. Names that differ only by case are rejected.
 - Prefab and collider-group names are plain keys: anything except `/`, control characters and leading/trailing spaces. Use a prefab folder instead of `/` (`MountainTile Full` in folder `MountainTile`). Prefab folders are editor-only grouping and never change a prefab's name.
 
+# Editing tips
+
+- **Drag and drop:** in a prefab library, drag a prefab card onto a folder (tree row, folder card or breadcrumb) to move it there; drag a folder onto another to nest it. On the project page, dragging a map or library onto a folder opens the Rename / move dialog with that folder picked; nothing moves until you confirm.
+- **Right-click** prefabs, collider groups, folders, layers, objects, editor tabs and the map canvas (Select/Move tools) for their actions. Paint tools keep right-click as erase.
+- **Colliders** are drawn the way the game builds them (NeoGameLib 0.4.1): each collider group has its own color (legend at the bottom-left of the map), its Box Collider specs are the shape of one cell, and cells only merge along a side the box fully covers. Dashed teal = trigger, red = a prefab's or object's own collider.
+
 # Updates
 
 The editor checks for updates on launch and from **Help › Check for updates…** (macOS: the app menu). Updates come from the studio's release service at `https://www.ctrl-neo.dev/apps` and are verified against the public key in `src-tauri/tauri.conf.json` before installing; unsaved tabs are saved or discarded first.

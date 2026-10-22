@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ContextMenuItem } from '@nuxt/ui'
 import type { NeoPrefab } from '#shared/types/neo'
 
 const props = defineProps<{ tab: MapTab, prefabs: Record<string, NeoPrefab> }>()
@@ -172,10 +173,43 @@ function pickLegend(name: string, layer: number) {
     if (library) selectPrefab(library, name)
     else props.tab.prefab = name
 }
+
+// ---- right-click menus ----
+type MenuTarget = { kind: 'layer', index: number } | { kind: 'prefab', library: string, name: string } | { kind: 'object', index: number }
+
+const menu = useContextTarget<MenuTarget>((t): ContextMenuItem[][] => {
+    if (t?.kind === 'layer') {
+        const layer = props.tab.map.layers[t.index]
+        if (!layer) return []
+        return [
+            [
+                { label: 'Rename', icon: 'i-lucide-pencil', onSelect: () => startRenameLayer(t.index) },
+                { label: layer.visible ? 'Hide' : 'Show', icon: layer.visible ? 'i-lucide-eye-off' : 'i-lucide-eye', onSelect: () => layer.visible = !layer.visible },
+            ],
+            [
+                { label: 'Move up', icon: 'i-lucide-arrow-up', disabled: t.index === props.tab.map.layers.length - 1, onSelect: () => moveLayer(t.index, 1) },
+                { label: 'Move down', icon: 'i-lucide-arrow-down', disabled: t.index === 0, onSelect: () => moveLayer(t.index, -1) },
+            ],
+            [{ label: 'Delete layer', icon: 'i-lucide-trash', color: 'error', disabled: props.tab.map.layers.length <= 1, onSelect: () => deleteLayer(t.index) }],
+        ]
+    }
+    if (t?.kind === 'prefab') return [[
+        { label: 'Use as brush', icon: 'i-lucide-paintbrush', onSelect: () => { selectPrefab(t.library, t.name); props.tab.tool = 'brush' } },
+        { label: 'Place as object', icon: 'i-lucide-diamond-plus', onSelect: () => { selectPrefab(t.library, t.name); props.tab.tool = 'object' } },
+    ], [
+        { label: 'Edit in library', icon: 'i-lucide-square-pen', onSelect: () => $t.openLibrary(t.library, { kind: 'prefab', library: t.library, name: t.name }) },
+    ]]
+    if (t?.kind === 'object') return [[
+        { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => $t.duplicateObject(props.tab, t.index) },
+        { label: 'Delete', icon: 'i-lucide-trash', color: 'error', onSelect: () => $t.deleteObject(props.tab, t.index) },
+    ]]
+    return []
+})
 </script>
 
 <template>
-    <div class="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-2">
+    <UContextMenu :items="menu.items" :content="menu.content">
+    <div class="flex h-full min-h-0 flex-col gap-3 overflow-y-auto p-2" data-context-menu @contextmenu.capture="menu.reset" @contextmenu="menu.settle">
         <!-- Layers -->
         <div class="flex flex-col gap-0.5">
             <div class="flex items-center gap-1 px-1">
@@ -201,6 +235,7 @@ function pickLegend(name: string, layer: number) {
                 class="group flex items-center gap-1 rounded-md px-1 py-0.5"
                 :class="tab.layer === item.index ? 'bg-elevated' : 'hover:bg-elevated/50'"
                 @click="tab.layer = item.index"
+                @contextmenu="menu.set({ kind: 'layer', index: item.index })"
             >
                 <UButton
                     :icon="isExpanded(item.index) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'"
@@ -325,11 +360,16 @@ function pickLegend(name: string, layer: number) {
                                 class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5"
                                 :class="tab.prefab === item.name ? 'bg-elevated ring-primary/50 ring' : 'hover:bg-elevated/50'"
                                 @click="selectPrefab(group.library, item.name)"
+                                @contextmenu="menu.set({ kind: 'prefab', library: group.library, name: item.name })"
                             >
                                 <img v-if="thumbs[item.name]" :src="thumbOf(item.name)" class="size-4 shrink-0 rounded-sm object-cover" alt="" />
                                 <span v-else class="size-4 shrink-0 rounded-sm" :style="{ background: swatchOf(item.name) }" />
                                 <span class="min-w-0 flex-1 truncate text-sm">{{ item.name }}</span>
-                                <UBadge v-if="item.def.collider" size="xs" variant="subtle" color="neutral" :label="item.def.collider" />
+                                <UBadge v-if="item.def.collider" size="xs" variant="subtle" color="neutral" :label="item.def.collider">
+                                    <template #leading>
+                                        <span class="size-1.5 shrink-0 rounded-full" :style="{ background: $t.groupColor.value[item.def.collider] ?? 'var(--ui-text-dimmed)' }" />
+                                    </template>
+                                </UBadge>
                                 <template v-if="tagsOf(item.def).length">
                                     <UBadge v-for="tag in tagsOf(item.def).slice(0, 2)" :key="tag" size="xs" variant="soft" color="neutral" :label="tag" />
                                     <UBadge v-if="tagsOf(item.def).length > 2" size="xs" variant="subtle" color="neutral" :label="`+${tagsOf(item.def).length - 2}`" />
@@ -365,6 +405,7 @@ function pickLegend(name: string, layer: number) {
                 class="group flex cursor-pointer items-center gap-1.5 rounded-md px-1 py-0.5"
                 :class="isObjectSelected(index) ? 'bg-elevated' : 'hover:bg-elevated/50'"
                 @click="tab.selection = { kind: 'object', index }"
+                @contextmenu="menu.set({ kind: 'object', index }); tab.selection = { kind: 'object', index }"
             >
                 <span class="size-3 shrink-0 rotate-45 rounded-[2px]" :style="{ background: swatchOf(obj.prefab) }" />
                 <span class="min-w-0 flex-1 truncate text-sm">{{ obj.name || 'Unnamed' }}</span>
@@ -374,4 +415,5 @@ function pickLegend(name: string, layer: number) {
             </template>
         </div>
     </div>
+    </UContextMenu>
 </template>

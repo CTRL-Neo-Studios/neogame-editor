@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TabsItem, TreeItem } from '@nuxt/ui'
+import type { ContextMenuItem, TabsItem, TreeItem } from '@nuxt/ui'
 import type { NeoColliderGroup, NeoEntry, NeoPrefab, NeoPrefabLibraryFile } from '#shared/types/neo'
 import { splitName } from '~/utils/names'
 
@@ -98,14 +98,17 @@ const countIn = computed(() => {
 
 type FolderItem = TreeItem & { value: string, folder: string, children?: FolderItem[] }
 
-const ROOT_KEY = '/' // folder paths never start with '/', so this can't collide
+// reka's select items throw on an empty-string value, so "Library root" and "None" use stand-ins no real name can be:
+const ROOT_KEY = '/' // folder paths never start with '/'
+const NO_GROUP = ' ' // key names never start with whitespace
+const DROP_CLASS = 'ring-2 ring-primary bg-primary/10 rounded-md'
 
 const treeItems = computed<FolderItem[]>(() => {
     const nodes: Record<string, FolderItem> = {}
     const top: FolderItem[] = []
     for (const f of allFolders.value) { // sorted: parents come before their children
         const [parent, leaf] = splitName(f)
-        const node: FolderItem = { label: leaf, value: f, folder: f, icon: 'i-lucide-folder' }
+        const node: FolderItem = { label: leaf, value: f, folder: f, icon: 'i-lucide-folder', class: dropTarget.value === f ? DROP_CLASS : undefined }
         nodes[f] = node
         const p = nodes[parent]
         if (p) {
@@ -114,7 +117,7 @@ const treeItems = computed<FolderItem[]>(() => {
         }
         else top.push(node)
     }
-    return [{ label: 'Library root', value: ROOT_KEY, folder: '', icon: 'i-lucide-library' }, ...top]
+    return [{ label: 'Library root', value: ROOT_KEY, folder: '', icon: 'i-lucide-library', class: dropTarget.value === '' ? DROP_CLASS : undefined }, ...top]
 })
 
 // UTree matches the selected item by getKey, so a stand-in with the same value is enough
@@ -130,6 +133,12 @@ function openFolder(f: string) {
     folder.value = f
     view.value = 'prefabs'
     expanded.value = [...new Set([...expanded.value, ...foldersOf([f])])]
+}
+
+/** Folder of the tree row under a DOM event ('' = root), or null when it's not over a row. */
+function treeFolderAt(e: Event): string | null {
+    const key = treeKeyAt(e)
+    return key === ROOT_KEY ? '' : key
 }
 
 const crumbs = computed(() => folder.value
@@ -200,6 +209,69 @@ function deleteFolder(f: string) {
     }
 }
 
+function movePrefab(name: string, to: string) {
+    const def = lib.value.prefabs?.[name]
+    if (!def || (def.folder ?? '') === to) return
+    $t.checkpoint(props.tab)
+    setFolder(def, to)
+}
+
+function setCollider(name: string, group: string | undefined) {
+    const def = lib.value.prefabs?.[name]
+    if (!def || def.collider === group) return
+    $t.checkpoint(props.tab)
+    def.collider = group
+}
+
+// ---- drag & drop: a prefab card or a folder onto a folder (tree row, folder card, breadcrumb) ----
+type Dragged = { kind: 'prefab', name: string } | { kind: 'folder', folder: string }
+const dragged = ref<Dragged | null>(null)
+/** the folder the pointer would drop into ('' = root) */
+const dropTarget = ref<string | null>(null)
+
+function dragStart(e: DragEvent, item: Dragged) {
+    dragged.value = item
+    e.dataTransfer!.effectAllowed = 'move'
+    e.dataTransfer!.setData('text/plain', item.kind === 'prefab' ? item.name : item.folder)
+}
+
+function dragEnd() {
+    dragged.value = null
+    dropTarget.value = null
+}
+
+/** Why the dragged thing can't land in `to`, or null. A folder keeps its own name inside `to`. */
+function dropError(to: string): string | null {
+    const d = dragged.value
+    if (!d) return 'nothing is dragged'
+    if (d.kind === 'prefab') return (lib.value.prefabs?.[d.name]?.folder ?? '') === to ? 'already there' : null
+    if (splitName(d.folder)[0] === to) return 'already there'
+    return folderNameError(joinName(to, splitName(d.folder)[1]), d.folder)
+}
+
+function dragOver(e: DragEvent, to: string | null) {
+    if (to === null || dropError(to)) {
+        dropTarget.value = null
+        return
+    }
+    e.preventDefault() // accepts the drop
+    e.dataTransfer!.dropEffect = 'move'
+    dropTarget.value = to
+}
+
+function drop(to: string | null) {
+    const d = dragged.value
+    const ok = to !== null && !dropError(to)
+    dragEnd()
+    if (!d || to === null || !ok) return
+    if (d.kind === 'prefab') movePrefab(d.name, to)
+    else moveFolder(d.folder, joinName(to, splitName(d.folder)[1]))
+}
+
+function dragLeave(e: DragEvent) {
+    if (!(e.currentTarget as Element).contains(e.relatedTarget as Node | null)) dropTarget.value = null
+}
+
 // ---- grid ----
 const query = ref('')
 const flatten = useLocalStorage('neo-library-all-folders', false)
@@ -251,6 +323,7 @@ watch(assetPaths, (paths) => {
 
 const thumbOf = (name: string) => thumbs[assetPaths.value[name] ?? ''] ?? null
 const swatchOf = (name: string) => colorOf(name, assetPaths.value[name] ?? null)
+const groupColor = computed(() => $t.groupColor.value)
 
 // ---- detail bindings: v-model setters are the commit points, so they checkpoint first ----
 const prefabSpecs = computed<NeoEntry[]>({
@@ -262,12 +335,12 @@ const prefabTags = computed<string[]>({
     set: v => { if (selectedPrefab.value) { $t.checkpoint(props.tab); selectedPrefab.value.tags = v } },
 })
 const prefabCollider = computed<string>({
-    get: () => selectedPrefab.value?.collider ?? '',
-    set: v => { if (selectedPrefab.value) { $t.checkpoint(props.tab); selectedPrefab.value.collider = v || undefined } },
+    get: () => selectedPrefab.value?.collider || NO_GROUP,
+    set: v => selectedPrefabName.value && setCollider(selectedPrefabName.value, v === NO_GROUP ? undefined : v),
 })
 const prefabFolder = computed<string>({
-    get: () => selectedPrefab.value?.folder ?? '',
-    set: v => { if (selectedPrefab.value) { $t.checkpoint(props.tab); setFolder(selectedPrefab.value, v) } },
+    get: () => selectedPrefab.value?.folder || ROOT_KEY,
+    set: v => selectedPrefabName.value && movePrefab(selectedPrefabName.value, v === ROOT_KEY ? '' : v),
 })
 const colliderSpecs = computed<NeoEntry[]>({
     get: () => selectedCollider.value?.specs ?? [],
@@ -278,13 +351,15 @@ const colliderTags = computed<string[]>({
     set: v => { if (selectedCollider.value) { $t.checkpoint(props.tab); selectedCollider.value.tags = v } },
 })
 
-const colliderOptions = computed(() => [
-    { label: 'None', value: '' },
-    ...Object.keys(lib.value.colliders ?? {}).map(name => ({ label: name, value: name })),
+interface Option { label: string, value: string, icon?: string, color?: string }
+
+const colliderOptions = computed<Option[]>(() => [
+    { label: 'None', value: NO_GROUP, icon: 'i-lucide-ban' },
+    ...Object.keys(lib.value.colliders ?? {}).map(name => ({ label: name, value: name, color: groupColor.value[name] })),
 ])
 
-const folderOptions = computed(() => [
-    { label: 'Library root', value: '', icon: 'i-lucide-library' },
+const folderOptions = computed<Option[]>(() => [
+    { label: 'Library root', value: ROOT_KEY, icon: 'i-lucide-library' },
     ...allFolders.value.map(f => ({ label: f, value: f, icon: 'i-lucide-folder' })),
 ])
 
@@ -481,12 +556,65 @@ function askDelete(kind: Kind, name: string) {
     }
 }
 
+// ---- right-click menus ----
+type MenuTarget = { kind: 'prefab' | 'collider', name: string } | { kind: 'folder', folder: string } | { kind: 'grid' }
+
+const menu = useContextTarget<MenuTarget>((t): ContextMenuItem[][] => {
+    if (!t) return []
+    if (t.kind === 'grid') return view.value === 'prefabs'
+        ? [[
+            { label: 'New prefab', icon: 'i-lucide-plus', onSelect: () => newEntry('prefab') },
+            { label: 'New folder', icon: 'i-lucide-folder-plus', onSelect: newFolder },
+        ]]
+        : [[{ label: 'New collider group', icon: 'i-lucide-plus', onSelect: () => newEntry('collider') }]]
+    if (t.kind === 'folder') {
+        const f = t.folder
+        // new things go into the open folder
+        const inside = (create: () => void) => () => { openFolder(f); create() }
+        return [
+            [{ label: 'Open', icon: 'i-lucide-folder-open', onSelect: () => openFolder(f) }],
+            [
+                { label: 'New prefab here', icon: 'i-lucide-plus', onSelect: inside(() => newEntry('prefab')) },
+                { label: 'New folder inside', icon: 'i-lucide-folder-plus', onSelect: inside(newFolder) },
+            ],
+            [
+                { label: 'Rename / move…', icon: 'i-lucide-pencil', disabled: !f, onSelect: () => renameFolder(f) },
+                { label: 'Delete folder', icon: 'i-lucide-folder-x', color: 'error', disabled: !f, onSelect: () => deleteFolder(f) },
+            ],
+        ]
+    }
+    const { kind, name } = t
+    const common: ContextMenuItem[] = [
+        { label: 'Rename', icon: 'i-lucide-pencil', onSelect: () => renaming.value = { kind, name, where: 'card' } },
+        { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => duplicate(kind, name) },
+    ]
+    const remove: ContextMenuItem[] = [{ label: 'Delete', icon: 'i-lucide-trash', color: 'error', onSelect: () => askDelete(kind, name) }]
+    const def = lib.value.prefabs?.[name]
+    if (kind === 'collider' || !def) return [common, remove]
+    return [common, [
+        {
+            label: 'Move to folder', icon: 'i-lucide-folder-input',
+            children: folderOptions.value.map(o => ({
+                label: o.label, icon: o.icon, disabled: (def.folder || ROOT_KEY) === o.value,
+                onSelect: () => movePrefab(name, o.value === ROOT_KEY ? '' : o.value),
+            })),
+        },
+        {
+            label: 'Collider group', icon: 'i-lucide-shield',
+            children: colliderOptions.value.map(o => ({
+                label: o.label, icon: o.icon ?? 'i-lucide-shield', disabled: (def.collider || NO_GROUP) === o.value,
+                onSelect: () => setCollider(name, o.value === NO_GROUP ? undefined : o.value),
+            })),
+        },
+    ], remove]
+})
+
 const tagsOf = (def: { tags?: string[] }) => def.tags ?? []
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 </script>
 
 <template>
-    <div class="flex h-full min-h-0">
+    <div class="flex h-full min-h-0" @dragend="dragEnd">
         <!-- left: folders / collider groups -->
         <div :ref="el => left.el = el as HTMLElement" class="relative flex shrink-0 flex-col border-e border-default bg-elevated/25" :style="{ width: `${left.size}px` }">
             <div class="flex flex-col gap-2 border-b border-default p-2">
@@ -510,22 +638,35 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                         <UButton icon="i-lucide-folder-x" size="xs" variant="ghost" color="neutral" :disabled="!folder" aria-label="Delete folder" @click="deleteFolder(folder)" />
                     </UTooltip>
                 </div>
-                <UTree
-                    v-model:expanded="expanded"
-                    :model-value="treeValue"
-                    :items="treeItems"
-                    :get-key="(i: FolderItem) => i.value"
-                    selection-behavior="replace"
-                    color="neutral"
-                    size="sm"
-                    class="min-h-0 flex-1 overflow-y-auto p-2"
-                    @update:model-value="(i: FolderItem | undefined) => i && openFolder(i.folder)"
-                >
-                    <template #item-trailing="{ item }">
-                        <span class="text-xs tabular-nums text-dimmed">{{ countIn[item.folder] ?? 0 }}</span>
-                        <UIcon v-if="item.children?.length" name="i-lucide-chevron-down" class="size-4 shrink-0 transition-transform duration-200 group-data-expanded:rotate-180" />
-                    </template>
-                </UTree>
+                <UContextMenu :items="menu.items" :content="menu.content">
+                    <UTree
+                        v-model:expanded="expanded"
+                        :model-value="treeValue"
+                        :items="treeItems"
+                        :get-key="(i: FolderItem) => i.value"
+                        selection-behavior="replace"
+                        color="neutral"
+                        size="sm"
+                        class="min-h-0 flex-1 overflow-y-auto p-2"
+                        data-context-menu
+                        @update:model-value="(i: FolderItem | undefined) => i && openFolder(i.folder)"
+                        @contextmenu.capture="menu.reset"
+                        @contextmenu="(e: MouseEvent) => { const f = treeFolderAt(e); if (f !== null) menu.set({ kind: 'folder', folder: f }); menu.settle(e) }"
+                        @dragstart="(e: DragEvent) => { const f = treeFolderAt(e); if (f) dragStart(e, { kind: 'folder', folder: f }); else e.preventDefault() }"
+                        @dragover="(e: DragEvent) => dragOver(e, treeFolderAt(e))"
+                        @dragleave="dragLeave"
+                        @drop.prevent="(e: DragEvent) => drop(treeFolderAt(e))"
+                    >
+                        <template #item-label="{ item }">
+                            <!-- marks the row for drag, drop and right-click; folders drag by their row -->
+                            <span :data-tree-key="item.value" :draggable="!!item.folder">{{ item.label }}</span>
+                        </template>
+                        <template #item-trailing="{ item }">
+                            <span class="text-xs tabular-nums text-dimmed">{{ countIn[item.folder] ?? 0 }}</span>
+                            <UIcon v-if="item.children?.length" name="i-lucide-chevron-down" class="size-4 shrink-0 transition-transform duration-200 group-data-expanded:rotate-180" />
+                        </template>
+                    </UTree>
+                </UContextMenu>
             </template>
 
             <div v-else class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-2">
@@ -535,19 +676,24 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                         <UButton icon="i-lucide-plus" size="xs" variant="ghost" color="neutral" aria-label="New collider group" @click="newEntry('collider')" />
                     </UTooltip>
                 </div>
-                <button
-                    v-for="[name] in visibleColliders"
-                    :key="name"
-                    type="button"
-                    class="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm"
-                    :class="selectedColliderName === name ? 'bg-elevated text-highlighted' : 'hover:bg-elevated/50'"
-                    @click="select('collider', name)"
-                >
-                    <UIcon name="i-lucide-shield" class="size-4 shrink-0 text-muted" />
-                    <span class="min-w-0 flex-1 truncate text-start">{{ name }}</span>
-                    <span class="text-xs tabular-nums text-dimmed">{{ colliderUsage[name] ?? 0 }}</span>
-                </button>
-                <p class="px-1 pt-2 text-xs text-dimmed">Prefabs in a group merge their cells into shared box colliders.</p>
+                <UContextMenu :items="menu.items" :content="menu.content">
+                    <div class="flex flex-col gap-0.5" data-context-menu @contextmenu.capture="menu.reset" @contextmenu="menu.settle">
+                        <button
+                            v-for="[name] in visibleColliders"
+                            :key="name"
+                            type="button"
+                            class="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm"
+                            :class="selectedColliderName === name ? 'bg-elevated text-highlighted' : 'hover:bg-elevated/50'"
+                            @click="select('collider', name)"
+                            @contextmenu="menu.set({ kind: 'collider', name })"
+                        >
+                            <span class="size-2.5 shrink-0 rounded-full" :style="{ background: groupColor[name] }" />
+                            <span class="min-w-0 flex-1 truncate text-start">{{ name }}</span>
+                            <span class="text-xs tabular-nums text-dimmed">{{ colliderUsage[name] ?? 0 }}</span>
+                        </button>
+                    </div>
+                </UContextMenu>
+                <p class="px-1 pt-2 text-xs text-dimmed">Prefabs in a group merge their cells into shared colliders.</p>
             </div>
 
             <div
@@ -565,11 +711,33 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
         <div class="flex min-w-0 flex-1 flex-col">
             <div class="flex flex-wrap items-center gap-2 border-b border-default px-3 py-2">
                 <nav v-if="view === 'prefabs'" class="flex min-w-0 items-center gap-0.5 text-sm" aria-label="Folder">
-                    <UButton :label="flatten ? 'All folders' : 'Root'" icon="i-lucide-library" size="xs" variant="ghost" :color="folder || flatten ? 'neutral' : 'primary'" @click="openFolder('')" />
+                    <UButton
+                        :label="flatten ? 'All folders' : 'Root'"
+                        icon="i-lucide-library"
+                        size="xs"
+                        variant="ghost"
+                        :color="folder || flatten ? 'neutral' : 'primary'"
+                        :class="dropTarget === '' && DROP_CLASS"
+                        @click="openFolder('')"
+                        @dragover="(e: DragEvent) => dragOver(e, '')"
+                        @dragleave="dragLeave"
+                        @drop.prevent="drop('')"
+                    />
                     <template v-if="!flatten">
                         <template v-for="c in crumbs" :key="c.folder">
                             <UIcon name="i-lucide-chevron-right" class="size-3.5 shrink-0 text-dimmed" />
-                            <UButton :label="c.label" size="xs" variant="ghost" :color="c.folder === folder ? 'primary' : 'neutral'" class="min-w-0" @click="openFolder(c.folder)" />
+                            <UButton
+                                :label="c.label"
+                                size="xs"
+                                variant="ghost"
+                                :color="c.folder === folder ? 'primary' : 'neutral'"
+                                class="min-w-0"
+                                :class="dropTarget === c.folder && DROP_CLASS"
+                                @click="openFolder(c.folder)"
+                                @dragover="(e: DragEvent) => dragOver(e, c.folder)"
+                                @dragleave="dragLeave"
+                                @drop.prevent="drop(c.folder)"
+                            />
                         </template>
                     </template>
                 </nav>
@@ -594,21 +762,29 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                 <UButton v-else icon="i-lucide-plus" label="New group" size="sm" @click="newEntry('collider')" />
             </div>
 
-            <div class="min-h-0 flex-1 overflow-y-auto p-3" @click.self="tab.selection = { kind: 'map' }">
+            <UContextMenu :items="menu.items" :content="menu.content" class="min-h-0 flex-1">
+            <div class="h-full overflow-y-auto p-3" data-context-menu @click.self="tab.selection = { kind: 'map' }" @contextmenu.capture="menu.reset" @contextmenu="(e: MouseEvent) => { menu.set({ kind: 'grid' }); menu.settle(e) }">
                 <template v-if="view === 'prefabs'">
                     <div v-if="subfolders.length || visiblePrefabs.length" class="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-3">
                         <button
                             v-for="f in subfolders"
                             :key="`folder:${f}`"
                             type="button"
-                            class="group flex flex-col overflow-hidden rounded-lg border border-default bg-default text-start transition-colors hover:border-accented hover:bg-elevated/40"
+                            draggable="true"
+                            class="group flex flex-col overflow-hidden rounded-lg border bg-default text-start transition-colors hover:border-accented hover:bg-elevated/40"
+                            :class="dropTarget === f ? 'border-primary ring-2 ring-primary/60 bg-primary/10' : 'border-default'"
                             :title="f"
                             @click="openFolder(f)"
+                            @contextmenu="menu.set({ kind: 'folder', folder: f })"
+                            @dragstart="(e: DragEvent) => dragStart(e, { kind: 'folder', folder: f })"
+                            @dragover="(e: DragEvent) => dragOver(e, f)"
+                            @dragleave="dragLeave"
+                            @drop.prevent="drop(f)"
                         >
-                            <div class="flex aspect-square items-center justify-center bg-elevated/40">
-                                <UIcon name="i-lucide-folder" class="size-14 text-muted transition-colors group-hover:text-primary" />
+                            <div class="pointer-events-none flex aspect-square items-center justify-center bg-elevated/40">
+                                <UIcon :name="dropTarget === f ? 'i-lucide-folder-input' : 'i-lucide-folder'" class="size-14 text-muted transition-colors group-hover:text-primary" />
                             </div>
-                            <div class="flex flex-col gap-0.5 p-2">
+                            <div class="pointer-events-none flex flex-col gap-0.5 p-2">
                                 <span class="truncate text-sm font-medium text-highlighted">{{ splitName(f)[1] }}</span>
                                 <span class="text-xs text-dimmed">{{ plural(countIn[f] ?? 0, 'prefab') }}</span>
                             </div>
@@ -617,16 +793,26 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                         <div
                             v-for="[name, def] in visiblePrefabs"
                             :key="name"
+                            :draggable="!isRenaming('prefab', name, 'card')"
                             class="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border bg-default transition-colors"
-                            :class="selectedPrefabName === name ? 'border-primary ring-2 ring-primary/40' : 'border-default hover:border-accented'"
+                            :class="[
+                                selectedPrefabName === name ? 'border-primary ring-2 ring-primary/40' : 'border-default hover:border-accented',
+                                dragged?.kind === 'prefab' && dragged.name === name && 'opacity-50',
+                            ]"
                             @click="select('prefab', name)"
+                            @contextmenu="menu.set({ kind: 'prefab', name })"
+                            @dragstart="(e: DragEvent) => dragStart(e, { kind: 'prefab', name })"
                         >
                             <div class="relative aspect-square bg-[repeating-conic-gradient(var(--ui-bg-elevated)_0_25%,var(--ui-bg)_0_50%)] bg-[length:16px_16px]">
                                 <img v-if="thumbOf(name)" :src="thumbOf(name)!" alt="" class="size-full object-contain p-2 [image-rendering:pixelated]">
                                 <div v-else class="flex size-full items-center justify-center" :style="{ background: swatchOf(name) }">
                                     <UIcon name="i-lucide-package" class="size-8 text-white/60" />
                                 </div>
-                                <UBadge v-if="def.collider" :label="def.collider" icon="i-lucide-shield" size="xs" color="neutral" variant="solid" class="absolute bottom-1.5 start-1.5 max-w-[calc(100%-0.75rem)]" />
+                                <UBadge v-if="def.collider" :label="def.collider" size="xs" color="neutral" variant="solid" class="absolute bottom-1.5 start-1.5 max-w-[calc(100%-0.75rem)]">
+                                    <template #leading>
+                                        <span class="size-2 shrink-0 rounded-full" :style="{ background: groupColor[def.collider] ?? 'var(--ui-text-dimmed)' }" />
+                                    </template>
+                                </UBadge>
                                 <div class="absolute end-1 top-1 hidden items-center gap-0.5 rounded-md bg-default/90 p-0.5 shadow-sm ring ring-default group-hover:flex">
                                     <UButton icon="i-lucide-pencil" size="xs" variant="ghost" color="neutral" aria-label="Rename" @click.stop="renaming = { kind: 'prefab', name, where: 'card' }" />
                                     <UButton icon="i-lucide-copy" size="xs" variant="ghost" color="neutral" aria-label="Duplicate" @click.stop="duplicate('prefab', name)" />
@@ -658,7 +844,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                         v-else
                         :icon="query ? 'i-lucide-search-x' : 'i-lucide-package-open'"
                         :title="query ? 'No matching prefabs' : 'This folder is empty'"
-                        :description="query ? 'Try another search, or turn on All folders.' : 'Create a prefab here, or move one in from its folder picker.'"
+                        :description="query ? 'Try another search, or turn on All folders.' : 'Create a prefab here, or drag one onto this folder in the tree.'"
                         class="h-full"
                     >
                         <template v-if="!query" #actions>
@@ -675,9 +861,10 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                             class="group relative flex cursor-pointer items-center gap-3 rounded-lg border bg-default p-3 transition-colors"
                             :class="selectedColliderName === name ? 'border-primary ring-2 ring-primary/40' : 'border-default hover:border-accented'"
                             @click="select('collider', name)"
+                            @contextmenu="menu.set({ kind: 'collider', name })"
                         >
                             <div class="flex size-10 shrink-0 items-center justify-center rounded-md bg-elevated">
-                                <UIcon name="i-lucide-shield" class="size-5 text-muted" />
+                                <UIcon name="i-lucide-shield" class="size-5" :style="{ color: groupColor[name] }" />
                             </div>
                             <div class="flex min-w-0 flex-1 flex-col gap-0.5">
                                 <LibraryNameField
@@ -716,6 +903,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                     </UEmpty>
                 </template>
             </div>
+            </UContextMenu>
         </div>
 
         <!-- right: detail -->
@@ -770,7 +958,16 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                                 <USelectMenu v-model="prefabFolder" :items="folderOptions" value-key="value" icon="i-lucide-folder" class="w-full" />
                             </UFormField>
                             <UFormField label="Collider group">
-                                <USelectMenu v-model="prefabCollider" :items="colliderOptions" value-key="value" icon="i-lucide-shield" class="w-full" />
+                                <USelectMenu v-model="prefabCollider" :items="colliderOptions" value-key="value" class="w-full">
+                                    <template #leading>
+                                        <span v-if="groupColor[prefabCollider]" class="size-2.5 rounded-full" :style="{ background: groupColor[prefabCollider] }" />
+                                        <UIcon v-else name="i-lucide-shield" class="size-4 text-dimmed" />
+                                    </template>
+                                    <template #item-leading="{ item }">
+                                        <span v-if="item.color" class="mx-0.5 size-2.5 shrink-0 rounded-full" :style="{ background: item.color }" />
+                                        <UIcon v-else-if="item.icon" :name="item.icon" class="size-4 shrink-0 text-dimmed" />
+                                    </template>
+                                </USelectMenu>
                             </UFormField>
                         </div>
                         <UFormField label="Tags">
@@ -792,7 +989,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                 <template v-else-if="selectedCollider && selectedColliderName">
                     <div class="flex items-start gap-3 border-b border-default p-4">
                         <div class="flex size-16 shrink-0 items-center justify-center rounded-md border border-default bg-elevated">
-                            <UIcon name="i-lucide-shield" class="size-7 text-muted" />
+                            <UIcon name="i-lucide-shield" class="size-7" :style="{ color: groupColor[selectedColliderName] }" />
                         </div>
                         <div class="flex min-w-0 flex-1 flex-col gap-1">
                             <LibraryNameField
@@ -825,7 +1022,7 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
                         <UFormField label="Tags">
                             <UInputTags v-model="colliderTags" class="w-full" />
                         </UFormField>
-                        <p class="text-xs text-muted">Every cell of prefabs in this group merges into box colliders; these specs land on each merged collider object.</p>
+                        <p class="text-xs text-muted">The cells of every prefab in this group merge into colliders. Its Box Collider specs are the shape of one cell (none = a full cell); cells only merge along a side the box fully covers. Other specs land once on each merged object.</p>
                         <div class="flex items-center gap-2 border-t border-default pt-4">
                             <span class="text-sm font-medium text-highlighted">Specs</span>
                             <UBadge :label="String(colliderSpecs.length)" size="xs" variant="subtle" color="neutral" />

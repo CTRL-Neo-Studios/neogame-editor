@@ -1,9 +1,9 @@
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs'
 import { message } from '@tauri-apps/plugin-dialog'
-import type { NeoMapFile, NeoPrefab, NeoPrefabLibraryFile } from '#shared/types/neo'
+import type { NeoColliderGroup, NeoMapFile, NeoPrefab, NeoPrefabLibraryFile } from '#shared/types/neo'
 import {stringify, useProject} from "~/composables/project/useProject.ts";
 import {
-    blockMask, clearMasked, copyBlock, deepClone, dropBlock, type EditorMap, fromMapFile, scopeLayers, type SelScope, type TileBlock, toMapFile,
+    blockMask, clearMasked, copyBlock, deepClone, dropBlock, type EditorMap, fromMapFile, scopeLayers, type SelScope, type TileBlock, toMapFile, uniqueObjectName,
 } from "~/utils/mapModel.ts";
 import { type Rename, rewriteEditorMap, rewriteLibraryFile, rewriteMapFile } from '~/utils/refs'
 
@@ -88,6 +88,19 @@ export function useAppTabs() {
         return merged
     }
 
+    /** All collider groups a map can see, merged like prefabsOf. */
+    function collidersOf(tab: MapTab): Record<string, NeoColliderGroup> {
+        const libs = project.state.value?.libraries ?? {}
+        const merged: Record<string, NeoColliderGroup> = {}
+        for (const name of tab.map.libraries)
+            for (const [group, def] of Object.entries(libs[name]?.colliders ?? {}))
+                merged[group] ??= def
+        return merged
+    }
+
+    /** Collider group name -> color, numbered across every library of the project so all views agree. */
+    const groupColor = computed(() => groupColors([...new Set(Object.values(project.state.value?.libraries ?? {}).flatMap(l => Object.keys(l.colliders ?? {})))]))
+
     function serialize(tab: EditorTab): string {
         if (tab.kind === 'map') return stringify(toMapFile(tab.map))
         return stringify(project.state.value?.libraries[tab.name] ?? {})
@@ -113,10 +126,15 @@ export function useAppTabs() {
         await navigateTo(`/tabs/${encodeURIComponent(id)}`)
     }
 
-    async function openLibrary(name: string) {
+    /** `selection` preselects something in the library (e.g. the prefab a map's "Edit in library" came from). */
+    async function openLibrary(name: string, selection?: Selection) {
         const id = `library:${name}`
-        if (!tabs.value.some(t => t.id === id)) {
-            const tab: LibraryTab = { id, kind: 'library', name, saved: '', undo: [], redo: [], selection: { kind: 'map' } }
+        const open = tabs.value.find(t => t.id === id)
+        if (open) {
+            if (selection) open.selection = selection
+        }
+        else {
+            const tab: LibraryTab = { id, kind: 'library', name, saved: '', undo: [], redo: [], selection: selection ?? { kind: 'map' } }
             tab.saved = serialize(tab)
             tabs.value.push(tab)
         }
@@ -148,12 +166,13 @@ export function useAppTabs() {
         return answer === "Don't save"
     }
 
-    async function close(id: string) {
-        const index = tabs.value.findIndex(t => t.id === id)
-        const tab = tabs.value[index]
-        if (!tab || !(await confirmDiscard([tab]))) return
-        tabs.value.splice(tabs.value.indexOf(tab), 1)
-        if (activeId.value === id) {
+    /** Closes tabs, asking once about the unsaved ones; if the active tab goes, its neighbour takes over. */
+    async function close(...ids: string[]) {
+        const list = tabs.value.filter(t => ids.includes(t.id))
+        if (!list.length || !(await confirmDiscard(list))) return
+        const index = tabs.value.findIndex(t => t.id === activeId.value)
+        tabs.value = tabs.value.filter(t => !list.includes(t))
+        if (activeId.value && ids.includes(activeId.value)) {
             const next = tabs.value[Math.min(index, tabs.value.length - 1)]
             activeId.value = next?.id ?? null
             await navigateTo(next ? `/tabs/${encodeURIComponent(next.id)}` : '/')
@@ -168,6 +187,24 @@ export function useAppTabs() {
         tab.undo.push(serialize(tab))
         if (tab.undo.length > HISTORY_LIMIT) tab.undo.shift()
         tab.redo.length = 0
+    }
+
+    /** Copies object `index` in right after itself under a fresh name, and selects the copy. */
+    function duplicateObject(tab: MapTab, index: number) {
+        const source = tab.map.objects[index]
+        if (!source) return
+        checkpoint(tab)
+        const clone = deepClone(source)
+        clone.name = uniqueObjectName(tab.map, clone.prefab ?? 'Object')
+        tab.map.objects.splice(index + 1, 0, clone)
+        tab.selection = { kind: 'object', index: index + 1 }
+    }
+
+    function deleteObject(tab: MapTab, index: number) {
+        if (!tab.map.objects[index]) return
+        checkpoint(tab)
+        tab.map.objects.splice(index, 1)
+        tab.selection = { kind: 'map' }
     }
 
     function restore(tab: EditorTab, json: string) {
@@ -356,8 +393,8 @@ export function useAppTabs() {
     }
 
     return {
-        tabs, activeId, active, clipboard, prefabsOf, isDirty, openMap, openLibrary, save, close, confirmDiscard, checkpoint, undo, redo,
-        selectedLayers, copyTiles, cutTiles, deleteTiles, pasteTiles, liftTiles, dropFloating, cancelFloating, selectAllTiles,
+        tabs, activeId, active, clipboard, prefabsOf, collidersOf, groupColor, isDirty, openMap, openLibrary, save, close, confirmDiscard, checkpoint, undo, redo,
+        duplicateObject, deleteObject, selectedLayers, copyTiles, cutTiles, deleteTiles, pasteTiles, liftTiles, dropFloating, cancelFloating, selectAllTiles,
         renameItem, renameFolder, renamePrefabRefs, forget,
     }
 }
