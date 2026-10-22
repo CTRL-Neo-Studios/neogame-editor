@@ -1,47 +1,58 @@
 {
-  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "NeoMap Editor",
-  "version": "0.1.4",
-  "identifier": "dev.ctrlneo.neomap-editor",
-  "build": {
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:3000",
-    "beforeDevCommand": "bun run dev",
-    "beforeBuildCommand": "bun run generate"
-  },
-  "app": {
-    "withGlobalTauri": true,
-    "windows": [
-      {
-        "title": "NeoMap Editor",
-        "width": 1440,
-        "height": 900,
-        "resizable": true,
-        "fullscreen": false,
-        "hiddenTitle": true
-      }
-    ],
-    "security": {
-      "csp": null
-    }
-  },
-  "bundle": {
-    "active": true,
-    "targets": ["nsis", "app", "dmg", "appimage", "deb", "rpm"],
-    "createUpdaterArtifacts": true,
-    "icon": [
-      "icons/32x32.png",
-      "icons/128x128.png",
-      "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ]
-  },
-  "plugins": {
-    "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg0NUQ2NENEQkFEM0JFMzUKUldRMXZ0TzZ6V1JkaERVRFpYeVNsREcyb0ZFeGFQcnpZM1ZMZkc2MUxxQUJwUk1wWkRhSC9BblAK",
-      "endpoints": ["https://www.ctrl-neo.dev/apps/updates/neomap-editor/{{target}}/{{arch}}/{{current_version}}"],
-      "windows": {"installMode": "passive"}
-    }
-  }
+	"$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+	"productName": "NeoMap Editor",
+	"version": "0.1.4",
+	"identifier": "dev.ctrlneo.neomap-editor",
+	"build": {
+		"frontendDist": "../dist",
+		"devUrl": "http://localhost:3000",
+		"beforeDevCommand": "bun run dev",
+		"beforeBuildCommand": "bun run generate"
+	},
+	"app": {
+		"withGlobalTauri": true,
+		"windows": [
+			{
+				"title": "NeoMap Editor",
+				"width": 1440,
+				"height": 900,
+				"resizable": true,
+				"fullscreen": false,
+				"hiddenTitle": true
+			}
+		],
+		"security": {
+			"csp": null
+		}
+	},
+	"bundle": {
+		"active": true,
+		"targets": [
+			"nsis",
+			"app",
+			"dmg",
+			"appimage",
+			"deb",
+			"rpm"
+		],
+		"createUpdaterArtifacts": true,
+		"icon": [
+			"icons/32x32.png",
+			"icons/128x128.png",
+			"icons/128x128@2x.png",
+			"icons/icon.icns",
+			"icons/icon.ico"
+		]
+	},
+	"plugins": {
+		"updater": {
+			"pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDg0NUQ2NENEQkFEM0JFMzUKUldRMXZ0TzZ6V1JkaERVRFpYeVNsREcyb0ZFeGFQcnpZM1ZMZkc2MUxxQUJwUk1wWkRhSC9BblAK",
+			"endpoints": [
+				"https://www.ctrl-neo.dev/apps/updates/neomap-editor/{{target}}/{{arch}}/{{current_version}}"
+			],
+			"windows": {
+				"installMode": "passive"
+			}
+		}
+	}
 }
