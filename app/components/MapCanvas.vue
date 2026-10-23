@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ContextMenuItem } from '@nuxt/ui'
 import type { NeoMapObjectFile, NeoPrefab, NeoSchemaFile, Vec2 } from '#shared/types/neo'
+import type { NeoColor } from '~/utils/schema'
 
 // Plain Canvas 2D, same approach as the reference mockup: one draw() renders everything under a single
 // world->screen transform, so selection, hover and previews always follow pan/zoom.
@@ -72,8 +73,9 @@ const legends = computed(() => {
     catch { return [] }
 })
 const looks = computed(() => new Map(Object.entries(props.prefabs).map(([name, prefab]) => {
-    const key = previewAsset(props.schema, prefab.specs) ?? null
-    return [name, { key, color: colorOf(name, key) }]
+    const look = previewLook(props.schema, prefab.specs)
+    const key = look?.texture ?? null
+    return [name, { key, tint: look?.tint ?? null, color: colorOf(name, key) }]
 })))
 
 // ---- textures: content images as blob URLs; null = loading or no preview ----
@@ -100,6 +102,26 @@ function texture(key: string): HTMLImageElement | null {
     return null
 }
 
+// SpriteSpec color: tinted copies per texture + rgb, built once the texture has loaded
+const tinted = new Map<string, HTMLCanvasElement | null>()
+type Look = { key: string | null, tint: NeoColor | null }
+function drawLook(ctx: CanvasRenderingContext2D, look: Look | undefined, x: number, y: number, w: number, h: number): boolean {
+    const img = look?.key && props.tab.showTextures ? texture(look.key) : null
+    if (!img) return false
+    const tint = look!.tint
+    let source: CanvasImageSource = img
+    if (tint) {
+        const id = `${look!.key}|${tint.r},${tint.g},${tint.b}`
+        if (!tinted.has(id)) tinted.set(id, tintImage(img, tint))
+        source = tinted.get(id) ?? img
+    }
+    const alpha = ctx.globalAlpha
+    if (tint) ctx.globalAlpha = alpha * tint.a / 255
+    ctx.drawImage(source, x, y, w, h)
+    ctx.globalAlpha = alpha
+    return true
+}
+
 const colliderSpecs = computed(() => {
     void texturesLoaded.value
     return colliderShapes(props.tab.map, props.prefabs, (key) => {
@@ -124,9 +146,7 @@ function drawTile(ctx: CanvasRenderingContext2D, name: string, x: number, y: num
         ctx.fillRect(x, y, w, h)
         return
     }
-    const img = look.key && props.tab.showTextures ? texture(look.key) : null
-    if (img) ctx.drawImage(img, x, y, w, h)
-    else {
+    if (!drawLook(ctx, look, x, y, w, h)) {
         ctx.fillStyle = look.color
         ctx.fillRect(x, y, w, h)
     }
@@ -235,8 +255,7 @@ function draw() {
             const y = (o.position?.y ?? 0) + ch / 2
             const selected = props.tab.selection.kind === 'object' && props.tab.selection.index === i
             const look = o.prefab ? looks.value.get(o.prefab) : undefined
-            const img = look?.key && props.tab.showTextures ? texture(look.key) : null
-            if (img) ctx.drawImage(img, x - cw / 2, y - ch / 2, cw, ch)
+            drawLook(ctx, look, x - cw / 2, y - ch / 2, cw, ch)
 
             ctx.beginPath()
             ctx.moveTo(x, y - rad); ctx.lineTo(x + rad, y); ctx.lineTo(x, y + rad); ctx.lineTo(x - rad, y); ctx.closePath()

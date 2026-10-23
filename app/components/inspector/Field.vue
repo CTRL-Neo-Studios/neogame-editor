@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { JsonObject, JsonValue, NeoEntry, NeoSchemaFile } from '#shared/types/neo'
+import type { NeoColor } from '~/utils/schema'
 import {useProject} from "~/composables/project/useProject.ts";
 
 const props = defineProps<{
@@ -71,6 +72,18 @@ function setPart(key: string, n: number | null | undefined) {
 
 const entries = computed(() => Array.isArray(value.value) ? value.value.filter(isObject) as unknown as NeoEntry[] : [])
 const strings = computed(() => Array.isArray(value.value) ? value.value.map(String) : [])
+
+// ---- color: NeoColor { r, g, b, a? }; the picker edits rgb as hex, `a` is its own input (straight alpha) ----
+const color = computed(() => colorValue(value.value) ?? { r: 255, g: 255, b: 255, a: 255 })
+const hex = computed(() => '#' + [color.value.r, color.value.g, color.value.b].map(n => n.toString(16).padStart(2, '0')).join('').toUpperCase())
+const rgba = computed(() => `rgba(${color.value.r}, ${color.value.g}, ${color.value.b}, ${color.value.a / 255})`)
+function setColor(part: Partial<NeoColor>) {
+    emit('update:modelValue', colorJson({ ...color.value, ...part }))
+}
+function setHex(s: string | undefined) {
+    const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(s ?? '')
+    if (m) setColor({ r: parseInt(m[1]!, 16), g: parseInt(m[2]!, 16), b: parseInt(m[3]!, 16) })
+}
 
 function setString(s: string) {
     emit('update:modelValue', s === '' && !props.info.required ? undefined : s)
@@ -245,6 +258,38 @@ function onPreviewLoad(e: Event) {
                     :decrement="false"
                     class="min-w-0 flex-1"
                     @update:model-value="n => setPart(p.key, n)"
+                />
+            </UFieldGroup>
+        </div>
+
+        <div v-else-if="field.kind === 'color'" class="flex gap-1">
+            <UPopover>
+                <UButton color="neutral" variant="outline" size="sm" class="min-w-0 flex-1 justify-start font-mono" :aria-label="`${info.name}: ${hex}`">
+                    <template #leading>
+                        <span
+                            class="size-4 shrink-0 rounded-sm border border-default"
+                            style="background: repeating-conic-gradient(#888 0 25%, #ccc 0 50%) 0 0 / 8px 8px"
+                        >
+                            <span class="block size-full rounded-sm" :style="{ background: rgba }" />
+                        </span>
+                    </template>
+                    {{ hex }}
+                </UButton>
+                <template #content>
+                    <UColorPicker :model-value="hex" class="p-2" @update:model-value="setHex" />
+                </template>
+            </UPopover>
+            <UFieldGroup size="sm" class="w-24 shrink-0">
+                <UBadge color="neutral" variant="subtle" label="a" class="w-6 justify-center" />
+                <UInputNumber
+                    :model-value="color.a"
+                    :min="0"
+                    :max="255"
+                    v-bind="numberProps(true)"
+                    :increment="false"
+                    :decrement="false"
+                    class="min-w-0 flex-1"
+                    @update:model-value="n => setColor({ a: n ?? 255 })"
                 />
             </UFieldGroup>
         </div>

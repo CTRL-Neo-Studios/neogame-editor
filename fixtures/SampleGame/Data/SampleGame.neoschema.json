@@ -212,11 +212,45 @@
               "type": "null"
             }
           ]
+        },
+        "color": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NeoGameLib.NeoMapping.DurableSpecifications.NeoColor"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
       "required": [
         "texture"
+      ]
+    },
+    "NeoGameLib.NeoMapping.DurableSpecifications.NeoColor": {
+      "type": "object",
+      "properties": {
+        "r": {
+          "type": "integer"
+        },
+        "g": {
+          "type": "integer"
+        },
+        "b": {
+          "type": "integer"
+        },
+        "a": {
+          "type": "integer",
+          "default": 255
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "r",
+        "g",
+        "b"
       ]
     },
     "NeoGameLib.NeoMapping.DurableSpecifications.TileRect": {

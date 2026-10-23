@@ -67,3 +67,7 @@ Nuxt's defineShortcuts() isn't the solution to everything. For a fun fact, they 
 ## [0.1.5] Updater!
 
 We now have a built in updater.
+
+## [0.1.6] DX Stuff
+
+Added `Color` field in SpriteSpec. Now you can use the color parameter to customize which tiles gets loaded with which specific color set in the sprite renderer.

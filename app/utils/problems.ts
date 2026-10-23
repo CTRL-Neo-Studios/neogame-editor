@@ -108,8 +108,11 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
 
         const data = props ?? entry.properties ?? {}
         const lists = new Map<string, 'spec' | 'action'>()
-        for (const f of fieldsOf(schema, defKey))
+        const colors: string[] = []
+        for (const f of fieldsOf(schema, defKey)) {
             if (f.field.kind === 'actions' || f.field.kind === 'specs') lists.set(f.name, f.field.kind === 'actions' ? 'action' : 'spec')
+            if (f.field.kind === 'color') colors.push(f.name)
+        }
         const label = check.label ?? entry.type
 
         if (!fn(data)) {
@@ -141,6 +144,17 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
         }
 
         if (!isObject(data)) return
+        // NeoColor channels: the schema says integer, the runtime also rejects anything outside 0-255
+        for (const name of colors) {
+            const c = data[name]
+            if (!isObject(c) || (check.fields && !check.fields.has(name))) continue
+            for (const ch of ['r', 'g', 'b', 'a']) {
+                const v = c[ch]
+                if (typeof v === 'number' && (v < 0 || v > 255))
+                    push('error', `${label}: ${name}.${ch} is ${v}; color channels must be 0-255`, loc(file, [...propSeg, name, ch]), target)
+            }
+        }
+
         for (const [name, itemKind] of lists) {
             const items = data[name]
             if (!Array.isArray(items) || (check.fields && !check.fields.has(name))) continue
