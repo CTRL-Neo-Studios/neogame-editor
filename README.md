@@ -55,3 +55,5 @@ Bump `version` in `src-tauri/tauri.conf.json` and push to `main`. `.github/workf
 
 - Versions are strict semver. A prerelease goes to the channel named by its tag: `0.2.0-beta.1` → `beta`, `0.2.0-insider.3` → `insider`; plain versions go to `stable`. Use a dot before the number (`alpha.10` sorts after `alpha.9`; `alpha10` sorts before `alpha9`).
 - Repo secrets: `TAURI_SIGNING_PRIVATE_KEY` (the private key file's contents) and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Losing the key means installed copies can never update again; keep it in the studio password manager.
+
+Step-by-step publishing, access tokens, troubleshooting, and how to add this updater to another Tauri + Nuxt app: [docs/tauri-updater-guide.md](docs/tauri-updater-guide.md).
