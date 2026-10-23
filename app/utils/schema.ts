@@ -11,6 +11,7 @@ export type FieldKind =
     | { kind: 'enum', values: string[] }
     | { kind: 'vector', integer: boolean }
     | { kind: 'rect' }
+    | { kind: 'color' }
     | { kind: 'strings' }
     | { kind: 'actions' }
     | { kind: 'specs' }
@@ -75,6 +76,8 @@ function classify(schema: NeoSchemaFile, raw: SchemaNode): FieldKind {
             if (keys.length === 2 && keys.includes('x') && keys.includes('y'))
                 return { kind: 'vector', integer: node.properties!.x!.type === 'integer' }
             if (['x', 'y', 'width', 'height'].every(k => keys.includes(k))) return { kind: 'rect' }
+            // NeoColor: { r, g, b, a? } channels 0-255
+            if (keys.length === 4 && ['r', 'g', 'b', 'a'].every(k => keys.includes(k))) return { kind: 'color' }
             return { kind: 'unknown' }
         }
         default: return { kind: 'unknown' }
@@ -107,16 +110,38 @@ export function actionNames(schema: NeoSchemaFile): string[] {
     return schema['x-neo-actions'] ?? Object.keys(schema.$defs).filter(k => k.startsWith('action:')).map(k => k.slice(7))
 }
 
-/** The first texture-like asset property of an entry list, for canvas previews. */
-export function previewAsset(schema: NeoSchemaFile, entries: { type: string, properties?: JsonObject }[] | undefined): string | undefined {
+export interface NeoColor { r: number, g: number, b: number, a: number }
+
+/** A NeoColor value with channels clamped to 0-255 (`a` defaults to 255), or null when unset/not a color. */
+export function colorValue(v: JsonValue | undefined): NeoColor | null {
+    if (typeof v !== 'object' || v === null || Array.isArray(v)) return null
+    const ch = (x: JsonValue | undefined, d: number) => typeof x === 'number' && Number.isFinite(x) ? Math.min(255, Math.max(0, Math.round(x))) : d
+    return { r: ch(v.r, 0), g: ch(v.g, 0), b: ch(v.b, 0), a: ch(v.a, 255) }
+}
+
+/** The file form of a color: `a` omitted when opaque, like the runtime default. */
+export function colorJson(c: NeoColor): JsonObject {
+    return c.a === 255 ? { r: c.r, g: c.g, b: c.b } : { r: c.r, g: c.g, b: c.b, a: c.a }
+}
+
+/** The first texture-like asset of an entry list, with that entry's color tint, for canvas previews. */
+export function previewLook(schema: NeoSchemaFile, entries: { type: string, properties?: JsonObject }[] | undefined): { texture: string, tint: NeoColor | null } | undefined {
     for (const entry of entries ?? []) {
-        for (const f of fieldsOf(schema, specKey(entry.type))) {
+        const fields = fieldsOf(schema, specKey(entry.type))
+        for (const f of fields) {
             if (f.field.kind === 'string' && f.field.asset === 'Texture2D') {
                 const value = entry.properties?.[f.name]
-                if (typeof value === 'string' && value) return value
+                if (typeof value !== 'string' || !value) continue
+                const colorField = fields.find(c => c.field.kind === 'color')
+                return { texture: value, tint: colorField ? colorValue(entry.properties?.[colorField.name]) : null }
             }
         }
     }
+}
+
+/** The first texture-like asset property of an entry list, for thumbnails. */
+export function previewAsset(schema: NeoSchemaFile, entries: { type: string, properties?: JsonObject }[] | undefined): string | undefined {
+    return previewLook(schema, entries)?.texture
 }
 
 /** A blank value for a newly added field/entry: the schema default, else the type's zero value. */
@@ -130,6 +155,7 @@ export function blankValue(info: FieldInfo): JsonValue {
         case 'enum': return info.field.values[0] ?? ''
         case 'vector': return { x: 0, y: 0 }
         case 'rect': return { x: 0, y: 0, width: 0, height: 0 }
+        case 'color': return { r: 255, g: 255, b: 255 }
         case 'strings':
         case 'actions':
         case 'specs': return []
