@@ -13,7 +13,7 @@ jobs:
   release:
     uses: CTRL-Neo-Studios/prism/.github/workflows/tauri-release.yml@main
     with:
-      app: neomap-editor
+      app: neogame-editor
     secrets: inherit
     permissions:
       contents: read
