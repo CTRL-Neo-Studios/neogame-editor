@@ -64,7 +64,8 @@ interface EntryCheck {
 export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, project: ProjectState): Problem[] {
     // raw objects: toMapFile structuredClones parts of the map, and ajv shouldn't walk reactive proxies
     const map = toRaw(tab.map)
-    const { schema, libraries, libraryErrors, nameErrors, maps } = toRaw(project)
+    const { schema, libraries, libraryErrors, files: listing } = toRaw(project)
+    const maps = listing.map.names
     const out: Problem[] = []
     const push = (level: Problem['level'], message: string, where: string, target?: Selection) => out.push({ level, message, where, target })
     const validate = schema ? validatorsOf(schema) : undefined
@@ -163,7 +164,7 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
     }
 
     if (!schema) push('error', project.schemaError ?? 'game schema not loaded', 'neo.project.json')
-    if (nameErrors.maps[tab.name]) push('error', nameErrors.maps[tab.name]!, tab.name, { kind: 'map' })
+    if (listing.map.nameErrors[tab.name]) push('error', listing.map.nameErrors[tab.name]!, tab.name, { kind: 'map' })
     const files = schema?.['x-neo-files']
 
     // libraries: NeoMap.Resolve merges prefabs and colliders and throws on any duplicate key
@@ -180,7 +181,7 @@ export function mapProblems(tab: MapTab, prefabs: Record<string, NeoPrefab>, pro
             push('error', error ? `library '${lib}' failed to load: ${error}` : `library '${lib}' doesn't exist`, loc(tab.name, ['prefabs']), { kind: 'map' })
             continue
         }
-        if (nameErrors.libraries[lib]) push('error', `library '${lib}': ${nameErrors.libraries[lib]}`, loc(tab.name, ['prefabs']), { kind: 'map' })
+        if (listing.library.nameErrors[lib]) push('error', `library '${lib}': ${listing.library.nameErrors[lib]}`, loc(tab.name, ['prefabs']), { kind: 'map' })
 
         for (const [name, prefab] of Object.entries(data.prefabs ?? {})) {
             const target: Selection = { kind: 'prefab', library: lib, name }

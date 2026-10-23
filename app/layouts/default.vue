@@ -4,6 +4,7 @@ import { platform } from '@tauri-apps/plugin-os'
 import { isTauri } from '@tauri-apps/api/core'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import {useAppCommands} from "~/composables/app/useAppCommands.ts";
+import { DOC_KINDS } from '~/utils/documents'
 import {useAppMenu} from "~/composables/app/useAppMenu.ts";
 
 const $t = useAppTabs()
@@ -30,7 +31,7 @@ onMounted(async () => {
     await updater.loadSettings()
     const found = await updater.checkNow()
     if (found) toast.add({
-        title: `NeoMap Editor ${found.version} is available`,
+        title: `NeoGame Editor ${found.version} is available`,
         icon: 'i-lucide-download',
         duration: 0,
         actions: [{ label: 'View', onClick: () => { updater.dialogOpen.value = true } }],
@@ -64,13 +65,13 @@ const tabMenu = useContextTarget<string>((id): ContextMenuItem[][] => {
 const tabItems = computed(() => $t.tabs.value.map(t => ({
     id: t.id,
     label: t.name,
-    icon: t.kind === 'map' ? 'i-lucide-map' : 'i-lucide-boxes',
+    icon: DOC_KINDS[t.kind].icon,
     dirty: $t.isDirty(t),
 })))
 
 function selectTab(id: string) {
     $t.activeId.value = id
-    navigateTo(`/tabs/${encodeURIComponent(id)}`)
+    navigateTo(tabRoute(id))
 }
 </script>
 

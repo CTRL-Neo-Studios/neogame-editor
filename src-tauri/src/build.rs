@@ -36,7 +36,7 @@ pub async fn dotnet_build(root: String, on_event: Channel<BuildEvent>) -> Result
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
         let mut child = cmd.spawn().map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => "dotnet was not found on PATH. Install the .NET SDK, then restart NeoMap Editor.".to_string(),
+            std::io::ErrorKind::NotFound => "dotnet was not found on PATH. Install the .NET SDK, then restart NeoGame Editor.".to_string(),
             _ => format!("could not start dotnet: {e}"),
         })?;
 

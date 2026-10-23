@@ -416,7 +416,7 @@ const header = computed(() => {
                 color="neutral"
                 variant="soft"
                 block
-                @click="$t.openLibrary(sel.library, sel)"
+                @click="$t.open('library', sel.library, sel)"
             />
         </template>
     </div>

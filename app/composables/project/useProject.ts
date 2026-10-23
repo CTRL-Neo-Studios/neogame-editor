@@ -1,16 +1,20 @@
 import { exists, mkdir, readDir, readFile, readTextFile, remove, rename, watch, writeTextFile } from '@tauri-apps/plugin-fs'
 import { dirname, join } from '@tauri-apps/api/path'
 import type { NeoMapFile, NeoPrefabLibraryFile, NeoProjectFile, NeoSchemaFile } from '#shared/types/neo'
-import type { TabKind } from '~/composables/app/useAppTabs'
 import { deepClone } from '~/utils/mapModel'
 import { pathCollision, pathNameError } from '~/utils/names'
 import { type Rename, rewriteLibraryFile, rewriteMapFile } from '~/utils/refs'
+import { DOC_KIND_LIST, DOC_KINDS, type DocKind, docKindOf } from '~/utils/documents'
 
-export const MAP_EXT = '.neomap.json'
-export const LIBRARY_EXT = '.neoprefabs.json'
-
-const EXT: Record<TabKind, string> = { map: MAP_EXT, library: LIBRARY_EXT }
-const DIR: Record<TabKind, string> = { map: 'NeoMaps', library: 'NeoPrefabs' }
+/** One document kind's files on disk. */
+export interface DocListing {
+    /** `/`-separated names relative to the kind's folder, extension dropped, sorted */
+    names: string[]
+    /** every folder under it, empty ones included */
+    folders: string[]
+    /** files whose name the game can't load, or that differ from another only by case */
+    nameErrors: Record<string, string>
+}
 
 export interface ProjectState {
     /** absolute path of the game project root (the folder that contains Data/) */
@@ -19,17 +23,14 @@ export interface ProjectState {
     project: NeoProjectFile
     schema: NeoSchemaFile | null
     schemaError: string | null
-    /** `/`-separated names relative to NeoMaps, sorted */
-    maps: string[]
-    /** every folder under NeoMaps, empty ones included */
-    mapFolders: string[]
+    files: Record<DocKind, DocListing>
+    /** loaded library contents, edited in place by library tabs */
     libraries: Record<string, NeoPrefabLibraryFile>
-    libraryFolders: string[]
     /** unreadable or invalid-name libraries (those aren't loaded) */
     libraryErrors: Record<string, string>
-    /** files on disk whose name the game can't load, or that differ from another only by case */
-    nameErrors: { maps: Record<string, string>, libraries: Record<string, string> }
 }
+
+const emptyFiles = () => Object.fromEntries(DOC_KIND_LIST.map(k => [k, { names: [], folders: [], nameErrors: {} }])) as unknown as Record<DocKind, DocListing>
 
 // non-serializable handles (watch unsubscribe) live outside useState
 let stopWatching: (() => void) | null = null
@@ -83,10 +84,7 @@ export function useProject() {
             throw new Error(`no Data/neo.project.json under ${root} — build the game once so NeoGameLib creates it`)
 
         const project = JSON.parse(await readTextFile(projectPath)) as NeoProjectFile
-        state.value = {
-            root, dataDir, project, schema: null, schemaError: null,
-            maps: [], mapFolders: [], libraries: {}, libraryFolders: [], libraryErrors: {}, nameErrors: { maps: {}, libraries: {} },
-        }
+        state.value = { root, dataDir, project, schema: null, schemaError: null, files: emptyFiles(), libraries: {}, libraryErrors: {} }
         await Promise.all([reloadSchema(), rescan()])
 
         stopWatching?.()
@@ -97,7 +95,7 @@ export function useProject() {
             if (schemaFile && event.paths.some(p => p.endsWith(schemaFile))) reloadSchema()
             const t = event.type
             const listing = t === 'any' || (typeof t === 'object' && ('create' in t || 'remove' in t || ('modify' in t && t.modify.kind === 'rename')))
-            if (listing && event.paths.some(p => p.endsWith(MAP_EXT) || p.endsWith(LIBRARY_EXT))) rescan()
+            if (listing && event.paths.some(p => docKindOf(p))) rescan()
         }, { delayMs: 300, recursive: true })
     }
 
@@ -123,32 +121,30 @@ export function useProject() {
         }
     }
 
-    const rootOf = (kind: TabKind) => join(state.value!.dataDir, DIR[kind])
-    const pathOf = (kind: TabKind, name: string) => join(state.value!.dataDir, DIR[kind], name + EXT[kind])
+    const rootOf = (kind: DocKind) => join(state.value!.dataDir, DOC_KINDS[kind].dir)
+    const pathOf = (kind: DocKind, name: string) => join(state.value!.dataDir, DOC_KINDS[kind].dir, name + DOC_KINDS[kind].ext)
     const mapPath = (name: string) => pathOf('map', name)
     const libraryPath = (name: string) => pathOf('library', name)
 
-    async function list(kind: TabKind) {
+    async function list(kind: DocKind): Promise<DocListing> {
         const dir = await rootOf(kind)
         if (!(await exists(dir))) await mkdir(dir, { recursive: true })
         const { files, folders } = await walk(dir)
-        const ext = EXT[kind]
-        return { names: files.filter(f => f.endsWith(ext)).map(f => f.slice(0, -ext.length)).sort(), folders: folders.sort() }
+        const ext = DOC_KINDS[kind].ext
+        const names = files.filter(f => f.endsWith(ext)).map(f => f.slice(0, -ext.length)).sort()
+        return { names, folders: folders.sort(), nameErrors: nameErrorsOf(names) }
     }
 
-    /** Re-lists both folders. Loads libraries not in state yet; state of loaded ones survives (it may hold edits). */
+    /** Re-lists every kind's folder. Loads libraries not in state yet; state of loaded ones survives (it may hold edits). */
     async function scan() {
         const s = state.value
         if (!s) return
-        const [maps, libs] = await Promise.all([list('map'), list('library')])
-        s.maps = maps.names
-        s.mapFolders = maps.folders
-        s.libraryFolders = libs.folders
-        s.nameErrors = { maps: nameErrorsOf(maps.names), libraries: nameErrorsOf(libs.names) }
-        const onDisk = new Set(libs.names)
+        const listings = await Promise.all(DOC_KIND_LIST.map(list))
+        DOC_KIND_LIST.forEach((k, i) => s.files[k] = listings[i]!)
+        const onDisk = new Set(s.files.library.names)
         for (const name of Object.keys(s.libraries)) if (!onDisk.has(name)) delete s.libraries[name]
         for (const name of Object.keys(s.libraryErrors)) if (!onDisk.has(name)) delete s.libraryErrors[name]
-        for (const name of libs.names) if (!(name in s.libraries)) await loadLibrary(name)
+        for (const name of onDisk) if (!(name in s.libraries)) await loadLibrary(name)
     }
     const rescan = serial(scan)
 
@@ -179,27 +175,21 @@ export function useProject() {
         await writeTextFile(await libraryPath(name), stringify({ ...lib, prefabs }))
     }
 
-    const createMap = serial(async (name: string, body: string) => {
-        const path = await mapPath(name)
+    /** Writes a new document of `kind` (its registry blank) and rescans, which loads it if it's a library. */
+    const createItem = serial(async (kind: DocKind, name: string) => {
+        const path = await pathOf(kind, name)
         await mkdir(await dirname(path), { recursive: true })
-        await writeTextFile(path, body)
+        await writeTextFile(path, stringify(DOC_KINDS[kind].blank(state.value!)))
         await scan()
     })
 
-    const createLibrary = serial(async (name: string) => {
-        await mkdir(await dirname(await libraryPath(name)), { recursive: true })
-        state.value!.libraries[name] = { prefabs: {}, colliders: {} }
-        await saveLibrary(name)
-        await scan()
-    })
-
-    const createFolder = serial(async (kind: TabKind, folder: string) => {
+    const createFolder = serial(async (kind: DocKind, folder: string) => {
         await mkdir(await join(await rootOf(kind), folder), { recursive: true })
         await scan()
     })
 
-    /** Moves/renames one map or library file. Tabs and references are updated by the caller (useAppTabs.renameItem). */
-    const moveItem = serial(async (kind: TabKind, from: string, to: string) => {
+    /** Moves/renames one document file. Tabs and references are updated by the caller (useAppTabs.renameItem). */
+    const moveItem = serial(async (kind: DocKind, from: string, to: string) => {
         if (from === to) return
         const s = state.value!
         const target = await pathOf(kind, to)
@@ -214,7 +204,7 @@ export function useProject() {
     })
 
     /** Finishes a folder rename after its items were moved: recreates leftover empty subfolders, drops the old tree. */
-    const moveFolder = serial(async (kind: TabKind, from: string, to: string) => {
+    const moveFolder = serial(async (kind: DocKind, from: string, to: string) => {
         const root = await rootOf(kind)
         const src = await join(root, from)
         await mkdir(await join(root, to), { recursive: true })
@@ -222,18 +212,18 @@ export function useProject() {
             const { files, folders } = await walk(src)
             for (const folder of folders) await mkdir(await join(root, to, folder), { recursive: true })
             // something the rename didn't move (e.g. an invalid-name file) keeps the old folder alive
-            if (!files.some(f => f.endsWith(MAP_EXT) || f.endsWith(LIBRARY_EXT))) await remove(src, { recursive: true })
+            if (!files.some(f => docKindOf(f))) await remove(src, { recursive: true })
         }
         await scan()
     })
 
-    const deleteItem = serial(async (kind: TabKind, name: string) => {
+    const deleteItem = serial(async (kind: DocKind, name: string) => {
         await remove(await pathOf(kind, name))
         await scan()
     })
 
     /** Removes a folder and everything in it; callers confirm and delete its items first. */
-    const deleteFolder = serial(async (kind: TabKind, folder: string) => {
+    const deleteFolder = serial(async (kind: DocKind, folder: string) => {
         const dir = await join(await rootOf(kind), folder)
         if (await exists(dir)) await remove(dir, { recursive: true })
         await scan()
@@ -260,7 +250,7 @@ export function useProject() {
         }
 
         let total = 0
-        for (const name of s.maps) total += await rewriteFile<NeoMapFile>(await mapPath(name), f => rewriteMapFile(f, change))
+        for (const name of s.files.map.names) total += await rewriteFile<NeoMapFile>(await mapPath(name), f => rewriteMapFile(f, change))
         if (change.kind === 'map') {
             for (const [name, lib] of Object.entries(s.libraries)) {
                 // the library tab edits this state in place, so it's what gets counted; the file is rewritten to match
@@ -288,7 +278,7 @@ export function useProject() {
     }
 
     return {
-        state, open, close, reloadSchema, rescan, loadLibrary, mapPath, libraryPath, saveLibrary, createMap, createLibrary, createFolder,
+        state, open, close, reloadSchema, rescan, loadLibrary, pathOf, mapPath, libraryPath, saveLibrary, createItem, createFolder,
         moveItem, moveFolder, deleteItem, deleteFolder, rewriteReferences, countReferences, assetUrl,
     }
 }

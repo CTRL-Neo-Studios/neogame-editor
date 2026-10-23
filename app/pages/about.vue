@@ -9,10 +9,10 @@ import icon from '~~/src-tauri/icons/128x128@2x.png'
 // standalone page for the About window: no app layout (header, tabs, menus, shortcuts)
 definePageMeta({ layout: false })
 
-const REPO = 'https://github.com/CTRL-Neo-Studios/neomap-editor'
+const REPO = 'https://github.com/CTRL-Neo-Studios/neogame-editor'
 const LIB = 'https://github.com/CTRL-Neo-Studios/NeoGameLib'
 
-const info = ref({ name: 'NeoMap Editor', version: '', tauri: '', os: '' })
+const info = ref({ name: 'NeoGame Editor', version: '', tauri: '', os: '' })
 
 onMounted(async () => {
     if (!isTauri()) return

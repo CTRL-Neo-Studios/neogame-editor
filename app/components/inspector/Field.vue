@@ -105,7 +105,7 @@ const worldError = computed(() => {
     }
     return null
 })
-const unknownWorlds = computed(() => worldNames.value.filter(n => !project.state.value?.maps.includes(n)))
+const unknownWorlds = computed(() => worldNames.value.filter(n => !project.state.value?.files.map.names.includes(n)))
 
 // ---- Texture2D preview: resolve the Content path the same way the canvas does ----
 const texturePath = computed(() => field.value.kind === 'string' && field.value.asset === 'Texture2D' && typeof value.value === 'string'
@@ -190,7 +190,7 @@ function onPreviewLoad(e: Event) {
                 v-if="world"
                 mode="autocomplete"
                 :model-value="typeof value === 'string' ? value : ''"
-                :items="project.state.value?.maps ?? []"
+                :items="project.state.value?.files.map.names ?? []"
                 icon="i-lucide-map"
                 :placeholder="isNull ? 'null' : 'map name, e.g. forest/level1'"
                 class="w-full"

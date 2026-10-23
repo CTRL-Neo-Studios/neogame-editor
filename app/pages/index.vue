@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {useProject} from "~/composables/project/useProject.ts";
 import {useRecents} from "~/composables/io/useRecents.ts";
+import { DOC_KIND_LIST } from '~/utils/documents'
 
 const project = useProject()
 const recents = useRecents()
@@ -23,10 +24,10 @@ async function rescan() {
             <div v-if="!s" class="mx-auto flex max-w-xl flex-col gap-8 pt-8">
                 <div class="flex items-center gap-4">
                     <div class="grid size-12 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                        <UIcon name="i-lucide-map" class="size-6" />
+                        <UIcon name="i-lucide-gamepad-2" class="size-6" />
                     </div>
                     <div>
-                        <h1 class="text-2xl font-semibold text-highlighted">NeoMap Editor</h1>
+                        <h1 class="text-2xl font-semibold text-highlighted">NeoGame Editor</h1>
                         <p class="text-sm text-muted">Open a NeoGameLib game project — the folder that contains <code>Data/neo.project.json</code>.</p>
                     </div>
                 </div>
@@ -69,8 +70,7 @@ async function rescan() {
                 </header>
 
                 <div class="grid items-start gap-4 lg:grid-cols-2">
-                    <HomeItemTree kind="map" />
-                    <HomeItemTree kind="library" />
+                    <HomeItemTree v-for="kind in DOC_KIND_LIST" :key="kind" :kind="kind" />
                 </div>
             </div>
         </UContainer>

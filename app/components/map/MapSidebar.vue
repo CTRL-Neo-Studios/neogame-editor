@@ -197,7 +197,7 @@ const menu = useContextTarget<MenuTarget>((t): ContextMenuItem[][] => {
         { label: 'Use as brush', icon: 'i-lucide-paintbrush', onSelect: () => { selectPrefab(t.library, t.name); props.tab.tool = 'brush' } },
         { label: 'Place as object', icon: 'i-lucide-diamond-plus', onSelect: () => { selectPrefab(t.library, t.name); props.tab.tool = 'object' } },
     ], [
-        { label: 'Edit in library', icon: 'i-lucide-square-pen', onSelect: () => $t.openLibrary(t.library, { kind: 'prefab', library: t.library, name: t.name }) },
+        { label: 'Edit in library', icon: 'i-lucide-square-pen', onSelect: () => $t.open('library', t.library, { kind: 'prefab', library: t.library, name: t.name }) },
     ]]
     if (t?.kind === 'object') return [[
         { label: 'Duplicate', icon: 'i-lucide-copy', onSelect: () => $t.duplicateObject(props.tab, t.index) },

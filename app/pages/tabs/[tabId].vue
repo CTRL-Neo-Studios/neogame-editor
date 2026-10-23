@@ -1,5 +1,12 @@
 <script setup lang="ts">
+import type { Component } from 'vue'
 import {useAppTabs} from "~/composables/app/useAppTabs.ts";
+import type { DocKind } from '~/utils/documents'
+import MapEditor from '~/components/map/MapEditor.vue'
+import LibraryEditor from '~/components/library/LibraryEditor.vue'
+
+// one editor per document kind; each gets the open tab of its kind as `tab`
+const EDITORS: Record<DocKind, Component> = { map: MapEditor, library: LibraryEditor }
 
 const route = useRoute()
 const $t = useAppTabs()
@@ -12,10 +19,9 @@ watchEffect(() => {
 </script>
 
 <template>
-    <MapEditor v-if="tab?.kind === 'map'" :key="tab.id" :tab="tab" />
-    <LibraryEditor v-else-if="tab?.kind === 'library'" :key="`${tab.id}`" :tab="tab" />
+    <component :is="EDITORS[tab.kind]" v-if="tab" :key="tab.id" :tab="tab" />
     <div v-else class="flex h-full items-center justify-center">
-        <UEmpty icon="i-lucide-file-question" title="Tab not open" description="Open a map or library from the project page.">
+        <UEmpty icon="i-lucide-file-question" title="Tab not open" description="Open a document from the project page.">
             <template #actions>
                 <UButton to="/" label="Project" icon="i-lucide-house" />
             </template>
