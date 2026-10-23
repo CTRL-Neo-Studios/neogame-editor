@@ -151,7 +151,7 @@ export function useAppCommands() {
         display('objects', 'Objects', 'showObjects'),
         display('textures', 'Textures', 'showTextures', 't'),
 
-        { id: 'about', label: 'About NeoMap Editor', group: 'help', whileTyping: true, run: openAboutWindow },
+        { id: 'about', label: 'About NeoGame Editor', group: 'help', whileTyping: true, run: openAboutWindow },
         { id: 'updates', label: 'Check for updates…', group: 'help', whileTyping: true, run: () => updater.dialogOpen.value = true, enabled: () => updater.supported },
     ]
 

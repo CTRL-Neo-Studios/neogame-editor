@@ -1,21 +1,18 @@
 <script setup lang="ts">
 import type { ContextMenuItem, TreeItem } from '@nuxt/ui'
-import { stringify, useProject } from '~/composables/project/useProject'
-import { type TabKind, useAppTabs } from '~/composables/app/useAppTabs'
+import { useProject } from '~/composables/project/useProject'
+import { useAppTabs } from '~/composables/app/useAppTabs'
+import { DOC_KINDS, type DocKind } from '~/utils/documents'
 
-// One home-page panel: the maps or prefab libraries of the open project as a folder tree, with create/move/delete.
+// One home-page panel: one document kind's files (maps, prefab libraries, ...) as a folder tree, with create/move/delete.
 
-const props = defineProps<{ kind: TabKind }>()
+const props = defineProps<{ kind: DocKind }>()
 
 const project = useProject()
 const $t = useAppTabs()
 const toast = useToast()
 
-const TEXT: Record<TabKind, { title: string, noun: string, nouns: string, icon: string }> = {
-    map: { title: 'Maps', noun: 'map', nouns: 'maps', icon: 'i-lucide-map' },
-    library: { title: 'Prefab libraries', noun: 'library', nouns: 'libraries', icon: 'i-lucide-package' },
-}
-const text = computed(() => TEXT[props.kind])
+const text = computed(() => DOC_KINDS[props.kind])
 // USelect items can't have an empty-string value
 const ROOT = '/'
 
@@ -29,15 +26,12 @@ interface Node extends TreeItem {
 }
 
 const s = computed(() => project.state.value!)
-// unreadable libraries aren't in `libraries` but still exist on disk
-const names = computed(() => props.kind === 'map'
-    ? s.value.maps
-    : [...new Set([...Object.keys(s.value.libraries), ...Object.keys(s.value.libraryErrors)])].sort())
-const folders = computed(() =>
-    [...new Set([...(props.kind === 'map' ? s.value.mapFolders : s.value.libraryFolders), ...foldersOf(names.value)])].sort())
-const errorOf = (name: string) => props.kind === 'map'
-    ? s.value.nameErrors.maps[name]
-    : s.value.nameErrors.libraries[name] ?? s.value.libraryErrors[name]
+const listing = computed(() => s.value.files[props.kind])
+const names = computed(() => listing.value.names)
+const folders = computed(() => [...new Set([...listing.value.folders, ...foldersOf(names.value)])].sort())
+// unreadable libraries are listed but can't be opened
+const loadError = (name: string) => props.kind === 'library' ? s.value.libraryErrors[name] : undefined
+const errorOf = (name: string) => listing.value.nameErrors[name] ?? loadError(name)
 const itemsIn = (folder: string) => names.value.filter(n => n.startsWith(folder + '/'))
 const tabsOf = (list: string[]) => $t.tabs.value.filter(t => t.kind === props.kind && list.includes(t.name))
 const plural = (n: number, word: string, many = word + 's') => `${n} ${n === 1 ? word : many}`
@@ -103,20 +97,14 @@ async function attempt(title: string, fn: () => Promise<unknown>) {
 }
 
 function open(name: string) {
-    if (props.kind === 'map') return attempt('Could not open map', () => $t.openMap(name))
-    if (!(name in s.value.libraries)) return toast.add({ title: `Can't open '${name}'`, description: errorOf(name), color: 'error' })
-    return attempt('Could not open library', () => $t.openLibrary(name))
+    if (loadError(name)) return toast.add({ title: `Can't open '${name}'`, description: errorOf(name), color: 'error' })
+    return attempt(`Could not open ${text.value.noun}`, () => $t.open(props.kind, name))
 }
 
 async function countRefs(list: string[]) {
     let n = 0
     for (const name of list) n += await project.countReferences({ kind: props.kind, from: name, to: name })
     return n
-}
-
-function newMapBody() {
-    const libraries = Object.keys(s.value.libraries)
-    return stringify({ cellSize: { x: 32, y: 32 }, prefabs: libraries.slice(0, 1), layers: [{ name: 'main', legend: { ' ': null }, rows: Array.from({ length: 12 }, () => ' '.repeat(16)) }], objects: [] })
 }
 
 // ---- name dialog: create / rename / move ----
@@ -169,8 +157,7 @@ function newItem() {
     form.value = {
         title: `New ${text.value.noun}`, confirm: 'Create', folder: startFolder(), leaf: '', folders: folders.value, taken: names.value,
         submit: async (name) => {
-            if (props.kind === 'map') await project.createMap(name, newMapBody())
-            else await project.createLibrary(name)
+            await project.createItem(props.kind, name)
             reveal(name)
             await open(name)
         },
@@ -331,7 +318,7 @@ const menu = useContextTarget<{ path: string, folder: boolean } | 'panel'>((t): 
         ]]
     }
     return [
-        [{ label: 'Open', icon: 'i-lucide-square-arrow-out-up-right', disabled: !!props.kind && props.kind === 'library' && !(t.path in s.value.libraries), onSelect: () => open(t.path) }],
+        [{ label: 'Open', icon: 'i-lucide-square-arrow-out-up-right', disabled: !!loadError(t.path), onSelect: () => open(t.path) }],
         [{ label: 'Rename / move…', icon: 'i-lucide-pencil', onSelect: move }],
         [{ label: 'Delete', icon: 'i-lucide-trash-2', color: 'error', onSelect: () => attempt('Could not count references', () => deleteItem(t.path)) }],
     ]
@@ -441,7 +428,7 @@ const menu = useContextTarget<{ path: string, folder: boolean } | 'panel'>((t): 
                 v-else
                 :icon="text.icon"
                 :title="`No ${text.title.toLowerCase()} yet`"
-                :description="kind === 'map' ? 'Maps are saved under Data/NeoMaps.' : 'Prefab libraries are saved under Data/NeoPrefabs.'"
+                :description="text.empty"
                 :actions="[{ label: `New ${text.noun}`, icon: 'i-lucide-plus', variant: 'soft', onClick: newItem }]"
                 size="sm"
                 variant="naked"

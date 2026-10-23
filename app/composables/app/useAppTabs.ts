@@ -6,8 +6,10 @@ import {
     blockMask, clearMasked, copyBlock, deepClone, dropBlock, type EditorMap, fromMapFile, scopeLayers, type SelScope, type TileBlock, toMapFile, uniqueObjectName,
 } from "~/utils/mapModel.ts";
 import { type Rename, rewriteEditorMap, rewriteLibraryFile, rewriteMapFile } from '~/utils/refs'
+import type { DocKind } from '~/utils/documents'
 
-export type TabKind = 'map' | 'library'
+/** route of a tab's editor page */
+export const tabRoute = (id: string) => `/tabs/${encodeURIComponent(id)}`
 
 /** Editor-local selection; the inspector and canvas both read this. */
 export type Selection =
@@ -108,38 +110,35 @@ export function useAppTabs() {
 
     const isDirty = (tab: EditorTab) => serialize(tab) !== tab.saved
 
-    async function openMap(name: string) {
-        const id = `map:${name}`
-        if (!tabs.value.some(t => t.id === id)) {
-            const file = JSON.parse(await readTextFile(await project.mapPath(name))) as NeoMapFile
-            const map = fromMapFile(file)
-            const tab: MapTab = {
-                id, kind: 'map', name, map, saved: '', undo: [], redo: [],
-                selection: { kind: 'map' }, tool: 'brush', layer: Math.max(0, map.layers.length - 1), prefab: null,
-                showGrid: true, showColliders: true, showObjects: true, showTextures: true, zoom: 1,
-                tileSel: null, selScope: 'current', floating: null,
-            }
-            tab.saved = serialize(tab)
-            tabs.value.push(tab)
+    async function newTab(kind: DocKind, name: string, selection?: Selection): Promise<EditorTab> {
+        const id = `${kind}:${name}`
+        if (kind === 'library') return { id, kind, name, saved: '', undo: [], redo: [], selection: selection ?? { kind: 'map' } }
+        const map = fromMapFile(JSON.parse(await readTextFile(await project.mapPath(name))) as NeoMapFile)
+        return {
+            id, kind, name, map, saved: '', undo: [], redo: [],
+            selection: selection ?? { kind: 'map' }, tool: 'brush', layer: Math.max(0, map.layers.length - 1), prefab: null,
+            showGrid: true, showColliders: true, showObjects: true, showTextures: true, zoom: 1,
+            tileSel: null, selScope: 'current', floating: null,
         }
-        activeId.value = id
-        await navigateTo(`/tabs/${encodeURIComponent(id)}`)
     }
 
-    /** `selection` preselects something in the library (e.g. the prefab a map's "Edit in library" came from). */
-    async function openLibrary(name: string, selection?: Selection) {
-        const id = `library:${name}`
-        const open = tabs.value.find(t => t.id === id)
-        if (open) {
-            if (selection) open.selection = selection
+    /**
+     * Opens (or switches to) the tab of a project document. `selection` preselects something in it (e.g. the
+     * prefab a map's "Edit in library" came from).
+     */
+    async function open(kind: DocKind, name: string, selection?: Selection) {
+        const id = `${kind}:${name}`
+        const existing = tabs.value.find(t => t.id === id)
+        if (existing) {
+            if (selection) existing.selection = selection
         }
         else {
-            const tab: LibraryTab = { id, kind: 'library', name, saved: '', undo: [], redo: [], selection: selection ?? { kind: 'map' } }
+            const tab = await newTab(kind, name, selection)
             tab.saved = serialize(tab)
             tabs.value.push(tab)
         }
         activeId.value = id
-        await navigateTo(`/tabs/${encodeURIComponent(id)}`)
+        await navigateTo(tabRoute(id))
     }
 
     async function save(tab: EditorTab) {
@@ -175,7 +174,7 @@ export function useAppTabs() {
         if (activeId.value && ids.includes(activeId.value)) {
             const next = tabs.value[Math.min(index, tabs.value.length - 1)]
             activeId.value = next?.id ?? null
-            await navigateTo(next ? `/tabs/${encodeURIComponent(next.id)}` : '/')
+            await navigateTo(next ? tabRoute(next.id) : '/')
         }
     }
 
@@ -345,7 +344,7 @@ export function useAppTabs() {
                 if (tab.kind === 'library' && (tab.selection.kind === 'prefab' || tab.selection.kind === 'collider')) tab.selection.library = rename.to
                 if (wasActive) {
                     activeId.value = tab.id
-                    await navigateTo(`/tabs/${encodeURIComponent(tab.id)}`)
+                    await navigateTo(tabRoute(tab.id))
                 }
             }
         }
@@ -355,7 +354,7 @@ export function useAppTabs() {
      * Moves/renames a map or library on disk and rewrites every reference to it: files on disk, open tabs, library
      * state. Returns how many references changed. Callers validate `to` (names.ts) and confirm first.
      */
-    async function renameItem(kind: TabKind, from: string, to: string): Promise<number> {
+    async function renameItem(kind: DocKind, from: string, to: string): Promise<number> {
         const rename: Rename = { kind, from, to }
         await project.moveItem(kind, from, to)
         const refs = await project.rewriteReferences(rename)
@@ -363,9 +362,9 @@ export function useAppTabs() {
         return refs
     }
 
-    /** Moves every map/library under `from/` to `to/` (a folder rename), then removes the old folder. */
-    async function renameFolder(kind: TabKind, from: string, to: string): Promise<number> {
-        const names = kind === 'map' ? project.state.value!.maps : Object.keys(project.state.value!.libraries)
+    /** Moves every document under `from/` to `to/` (a folder rename), then removes the old folder. */
+    async function renameFolder(kind: DocKind, from: string, to: string): Promise<number> {
+        const names = project.state.value!.files[kind].names
         let refs = 0
         for (const name of names.filter(n => n.startsWith(from + '/')))
             refs += await renameItem(kind, name, to + name.slice(from.length))
@@ -384,8 +383,8 @@ export function useAppTabs() {
         return refs
     }
 
-    /** Closes tabs of a deleted map/library without asking (the file is gone). */
-    async function forget(kind: TabKind, name: string) {
+    /** Closes the tab of a deleted document without asking (the file is gone). */
+    async function forget(kind: DocKind, name: string) {
         const tab = tabs.value.find(t => t.kind === kind && t.name === name)
         if (!tab) return
         tab.saved = serialize(tab)
@@ -393,7 +392,7 @@ export function useAppTabs() {
     }
 
     return {
-        tabs, activeId, active, clipboard, prefabsOf, collidersOf, groupColor, isDirty, openMap, openLibrary, save, close, confirmDiscard, checkpoint, undo, redo,
+        tabs, activeId, active, clipboard, prefabsOf, collidersOf, groupColor, isDirty, open, save, close, confirmDiscard, checkpoint, undo, redo,
         duplicateObject, deleteObject, selectedLayers, copyTiles, cutTiles, deleteTiles, pasteTiles, liftTiles, dropFloating, cancelFloating, selectAllTiles,
         renameItem, renameFolder, renamePrefabRefs, forget,
     }

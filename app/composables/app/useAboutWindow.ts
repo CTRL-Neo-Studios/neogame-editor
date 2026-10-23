@@ -4,7 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const LABEL = 'about'
 
-/** Opens (or focuses) the About NeoMap Editor window: a small fixed-size window, like macOS "About <App>" panels. */
+/** Opens (or focuses) the About NeoGame Editor window: a small fixed-size window, like macOS "About <App>" panels. */
 export async function openAboutWindow() {
     if (!isTauri()) return navigateTo('/about')
     const existing = await WebviewWindow.getByLabel(LABEL)
@@ -15,7 +15,7 @@ export async function openAboutWindow() {
     }
     new WebviewWindow(LABEL, {
         url: '/about',
-        title: 'About NeoMap Editor',
+        title: 'About NeoGame Editor',
         width: 340,
         height: 420,
         resizable: false,

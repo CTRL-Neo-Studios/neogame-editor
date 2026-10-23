@@ -73,7 +73,7 @@ export function useAppMenu(commands: AppCommand[], nativeMenu: boolean) {
             return Submenu.new({ text: GROUPS[group], items })
         }))
         const app = await Submenu.new({
-            text: 'NeoMap Editor',
+            text: 'NeoGame Editor',
             items: [
                 // our window (the predefined About item shows the bare system panel)
                 { id: about.id, text: about.label, action: () => about.run() },
@@ -85,7 +85,7 @@ export function useAppMenu(commands: AppCommand[], nativeMenu: boolean) {
                 { item: 'ShowAll' },
                 { item: 'Separator' },
                 // our Quit, not the predefined one, so the unsaved-changes prompt on window close runs
-                { id: quit.id, text: 'Quit NeoMap Editor', accelerator: quit.accel, action: () => quit.run() },
+                { id: quit.id, text: 'Quit NeoGame Editor', accelerator: quit.accel, action: () => quit.run() },
             ],
         })
         await (await Menu.new({ items: [app, ...submenus] })).setAsAppMenu()

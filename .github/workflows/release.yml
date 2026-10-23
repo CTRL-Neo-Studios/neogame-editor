@@ -1,4 +1,5 @@
-# Builds and publishes NeoMap Editor through the studio's shared pipeline (CTRL-Neo-Studios/prism).
+# Builds and publishes NeoGame Editor through the studio's shared pipeline (CTRL-Neo-Studios/prism).
+# `app: neomap-editor` is the release service's app id (update URLs in tauri.conf.json use it too); it predates the rename.
 # Release = bump "version" in src-tauri/tauri.conf.json and push to main. Unchanged versions build but don't publish.
 # Needs repo secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 name: Release

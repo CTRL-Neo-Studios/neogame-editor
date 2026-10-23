@@ -12,7 +12,7 @@ definePageMeta({ layout: false })
 const REPO = 'https://github.com/CTRL-Neo-Studios/neomap-editor'
 const LIB = 'https://github.com/CTRL-Neo-Studios/NeoGameLib'
 
-const info = ref({ name: 'NeoMap Editor', version: '', tauri: '', os: '' })
+const info = ref({ name: 'NeoGame Editor', version: '', tauri: '', os: '' })
 
 onMounted(async () => {
     if (!isTauri()) return

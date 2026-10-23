@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Problem } from '~/utils/problems'
 
-defineProps<{ tab: MapTab, problems: Problem[], json: string, view: 'problems' | 'json' }>()
+defineProps<{ tab: EditorTab, problems: Problem[], json: string, view: 'problems' | 'json' }>()
 </script>
 
 <template>
